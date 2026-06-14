@@ -2,102 +2,66 @@ import time
 import traceback
 import vk_api
 from config import *
-from db import *
 from utils import *
-from keyboards import get_moderation_keyboard
 
 def run_grabber():
     vk = vk_api.VkApi(token=USER_TOKEN).get_api()
     
     print("🎣 Граббер запущен")
-    print(f"⏱ Интервал сканирования: {GRAB_INTERVAL // 60} мин.")
-    print(f"📊 Лимит с группы в сутки: {MAX_GRAB_PER_GROUP_DAY}")
     
     while True:
         try:
             donors = get_donor_groups()
             if not donors:
-                print("📭 Нет групп-доноров. Добавьте через админку.")
+                print("📭 Нет групп-доноров")
             else:
-                print(f"\n🔍 Сканирую {len(donors)} групп-доноров...")
+                print(f"\n🔍 Сканирую {len(donors)} групп...")
                 
                 for group_id in donors:
                     try:
-                        # Проверяем дневной лимит
-                        today_count = count_today_grabs_from_group(group_id)
-                        if today_count >= MAX_GRAB_PER_GROUP_DAY:
-                            print(f"  ⏭ Группа {group_id}: лимит ({today_count}/{MAX_GRAB_PER_GROUP_DAY})")
+                        if count_today_grabs(group_id) >= MAX_GRAB_PER_GROUP_DAY:
                             continue
                         
-                        # Забираем последние посты
-                        posts = vk.wall.get(
-                            owner_id=-group_id,
-                            count=GRAB_POSTS_PER_GROUP,
-                            filter="owner"  # только от имени группы
-                        )
+                        posts = vk.wall.get(owner_id=-group_id, count=GRAB_POSTS_PER_GROUP, filter="owner")
                         
-                        grabbed = 0
                         for post in posts.get("items", []):
                             post_id = post["id"]
                             text = post.get("text", "")
                             
-                            # Уже брали?
                             if is_post_grabbed(group_id, post_id):
                                 continue
                             
-                            # Отмечаем что видели
-                            add_to_grab_history(group_id, post_id)
+                            add_grabbed_post(group_id, post_id)
                             
-                            # Проверка на ссылки
                             if contains_any_link(text):
-                                attachments_str = build_attachments(post)
-                                moderate_post(
-                                    vk=vk,
-                                    post_id=post_id,
-                                    uid=-group_id,
-                                    text=text,
-                                    attachments_str=attachments_str,
-                                    reason="ссылки (граббер)",
-                                    post_type="grab"
-                                )
+                                moderate_post(vk, post_id, -group_id, text, build_attachments(post), "ссылки (граббер)", "grab")
                                 continue
                             
-                            # Проверка на спам-слова
                             if is_spam(text):
-                                attachments_str = build_attachments(post)
-                                moderate_post(
-                                    vk=vk,
-                                    post_id=post_id,
-                                    uid=-group_id,
-                                    text=text,
-                                    attachments_str=attachments_str,
-                                    reason="спам-слова (граббер)",
-                                    post_type="grab"
-                                )
+                                moderate_post(vk, post_id, -group_id, text, build_attachments(post), "спам-слова (граббер)", "grab")
                                 continue
                             
-                            # Добавляем в очередь
-                            attachments_str = build_attachments(post)
-                            add_to_grab_queue(group_id, post_id, text, attachments_str or "")
-                            grabbed += 1
-                            print(f"  ✅ Группа {group_id}: пост {post_id} → в очередь")
+                            # Публикуем сразу
+                            final_text = text
+                            if GRABBER_POST_PREFIX:
+                                final_text = GRABBER_POST_PREFIX + "\n" + final_text
+                            if GRABBER_POST_SUFFIX:
+                                final_text = final_text + "\n" + GRABBER_POST_SUFFIX
                             
-                            # Проверяем лимит
-                            if count_today_grabs_from_group(group_id) >= MAX_GRAB_PER_GROUP_DAY:
+                            attachments = build_attachments(post)
+                            result = vk.wall.post(owner_id=-GROUP_ID, message=final_text, attachments=attachments, from_group=1)
+                            add_published_post(result["post_id"], -group_id, text)
+                            print(f"✅ Граббер: пост {post_id} из {group_id}")
+                            time.sleep(15)
+                            
+                            if count_today_grabs(group_id) >= MAX_GRAB_PER_GROUP_DAY:
                                 break
-                        
-                        if grabbed == 0:
-                            print(f"  📭 Группа {group_id}: нет новых постов")
                     
                     except Exception as e:
-                        print(f"  ❌ Ошибка в группе {group_id}: {e}")
-                
-                queue_count = get_grab_queue_count()
-                print(f"📦 Постов в очереди граббера: {queue_count}")
+                        print(f"❌ Группа {group_id}: {e}")
             
             time.sleep(GRAB_INTERVAL)
         
         except Exception as e:
-            print(f"❌ Ошибка граббера: {e}")
-            traceback.print_exc()
+            print(f"❌ Ошибка: {e}")
             time.sleep(60)
