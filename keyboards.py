@@ -74,3 +74,20 @@ def get_back_admin_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("🔙 Назад в админку", color=VkKeyboardColor.PRIMARY)
     return keyboard
+
+def get_remove_donor_keyboard(donors, vk_user=None):
+    """Клавиатура со списком групп для удаления"""
+    keyboard = VkKeyboard(one_time=True)
+    for i, group_id in enumerate(donors[:10], 1):
+        try:
+            from utils import get_group_name
+            name = get_group_name(vk_user, group_id) if vk_user else str(group_id)
+        except:
+            name = str(group_id)
+        label = f"➖ {name}"[:40]
+        keyboard.add_button(label, color=VkKeyboardColor.NEGATIVE)
+        if i % 2 == 0 and i != len(donors[:10]):
+            keyboard.add_line()
+    keyboard.add_line()
+    keyboard.add_button("🔙 Назад в админку", color=VkKeyboardColor.SECONDARY)
+    return keyboard
