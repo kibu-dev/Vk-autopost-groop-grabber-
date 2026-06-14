@@ -6,7 +6,6 @@ from db import *
 from utils import *
 from keyboards import *
 
-# Состояния
 waiting_support = set()
 selected_post_for_delete = {}
 admin_state = {}
@@ -27,12 +26,11 @@ def run_messenger():
             
             is_admin = (user_id == ADMIN_ID)
             
-            # ─── ОБРАБОТКА АДМИНСКИХ СОСТОЯНИЙ ───
+            # ─── АДМИНСКИЕ СОСТОЯНИЯ ───
             if is_admin and user_id in admin_state:
                 state = admin_state[user_id]
                 mode = state.get("mode")
                 
-                # Добавление группы
                 if mode == "add_donor":
                     if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
@@ -44,11 +42,10 @@ def run_messenger():
                             name = get_group_name(vk_user, group_id)
                             send_message(vk, user_id, f"✅ Группа [{name}] добавлена!", get_donor_groups_keyboard())
                         else:
-                            send_message(vk, user_id, "❌ Не удалось найти группу. Проверьте ссылку или ID.", get_back_admin_keyboard())
+                            send_message(vk, user_id, "❌ Не удалось найти группу.", get_back_admin_keyboard())
                         admin_state.pop(user_id, None)
                     continue
                 
-                # Удаление группы (вводом)
                 if mode == "del_donor":
                     if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
@@ -61,13 +58,12 @@ def run_messenger():
                                 remove_donor_group(group_id)
                                 send_message(vk, user_id, f"✅ Группа {group_id} удалена!", get_donor_groups_keyboard())
                             else:
-                                send_message(vk, user_id, "❌ Группа не найдена в списке доноров.", get_donor_groups_keyboard())
+                                send_message(vk, user_id, "❌ Группа не найдена.", get_donor_groups_keyboard())
                         else:
                             send_message(vk, user_id, "❌ Не удалось найти группу.", get_back_admin_keyboard())
                         admin_state.pop(user_id, None)
                     continue
                 
-                # Добавление слова
                 if mode == "add_word":
                     if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
@@ -79,7 +75,6 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                     continue
                 
-                # Удаление слова (вводом)
                 if mode == "del_word":
                     if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
@@ -241,12 +236,12 @@ def run_messenger():
                         send_message(vk, user_id, "📋 Группы-доноры:\n" + "\n".join(lines), get_donor_groups_keyboard())
                     continue
                 
-                if text_lower == "➕ добавить":
+                if text_lower == "➕ добавить группу":
                     admin_state[user_id] = {"mode": "add_donor"}
                     send_message(vk, user_id, "Введите ID группы или ссылку:", get_back_admin_keyboard())
                     continue
                 
-                if text_lower == "➖ удалить":
+                if text_lower == "➖ удалить группу":
                     donors = get_donor_groups()
                     if not donors:
                         send_message(vk, user_id, "📭 Список групп пуст.", get_donor_groups_keyboard())
@@ -254,7 +249,6 @@ def run_messenger():
                         send_message(vk, user_id, "Выберите группу для удаления:", get_remove_donor_keyboard(donors, vk_user))
                     continue
                 
-                # Удаление группы по кнопке с названием
                 if text_lower.startswith("➖ "):
                     donors = get_donor_groups()
                     for g in donors:
@@ -276,12 +270,12 @@ def run_messenger():
                         send_message(vk, user_id, "📋 Запрещённые слова:\n" + ", ".join(words), get_forbidden_words_keyboard())
                     continue
                 
-                if text_lower == "➕ добавить" and user_id not in admin_state:
+                if text_lower == "➕ добавить слово":
                     admin_state[user_id] = {"mode": "add_word"}
                     send_message(vk, user_id, "Введите слово:", get_back_admin_keyboard())
                     continue
                 
-                if text_lower == "➖ удалить" and user_id not in admin_state:
+                if text_lower == "➖ удалить слово":
                     admin_state[user_id] = {"mode": "del_word"}
                     send_message(vk, user_id, "Введите слово для удаления:", get_back_admin_keyboard())
                     continue
@@ -333,7 +327,6 @@ def run_messenger():
                         pass
                     continue
             
-            # ─── НЕИЗВЕСТНАЯ КОМАНДА ───
             else:
                 kb = get_admin_main_keyboard() if is_admin else get_main_keyboard()
                 send_message(vk, user_id, "Нажмите на кнопку в меню", kb)
