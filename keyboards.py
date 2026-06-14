@@ -47,18 +47,18 @@ def get_admin_main_keyboard():
 def get_donor_groups_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("📋 Список групп", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("➕ Добавить", color=VkKeyboardColor.POSITIVE)
+    keyboard.add_button("➕ Добавить группу", color=VkKeyboardColor.POSITIVE)
     keyboard.add_line()
-    keyboard.add_button("➖ Удалить", color=VkKeyboardColor.NEGATIVE)
+    keyboard.add_button("➖ Удалить группу", color=VkKeyboardColor.NEGATIVE)
     keyboard.add_button("🔙 Назад", color=VkKeyboardColor.SECONDARY)
     return keyboard
 
 def get_forbidden_words_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button("📋 Список слов", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("➕ Добавить", color=VkKeyboardColor.POSITIVE)
+    keyboard.add_button("➕ Добавить слово", color=VkKeyboardColor.POSITIVE)
     keyboard.add_line()
-    keyboard.add_button("➖ Удалить", color=VkKeyboardColor.NEGATIVE)
+    keyboard.add_button("➖ Удалить слово", color=VkKeyboardColor.NEGATIVE)
     keyboard.add_button("🔙 Назад", color=VkKeyboardColor.SECONDARY)
     return keyboard
 
@@ -76,7 +76,6 @@ def get_back_admin_keyboard():
     return keyboard
 
 def get_remove_donor_keyboard(donors, vk_user=None):
-    """Клавиатура со списком групп для удаления"""
     keyboard = VkKeyboard(one_time=True)
     for i, group_id in enumerate(donors[:10], 1):
         try:
