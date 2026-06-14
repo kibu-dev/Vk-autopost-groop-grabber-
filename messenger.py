@@ -48,7 +48,7 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                     continue
                 
-                # Удаление группы
+                # Удаление группы (вводом)
                 if mode == "del_donor":
                     if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
@@ -79,7 +79,7 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                     continue
                 
-                # Удаление слова
+                # Удаление слова (вводом)
                 if mode == "del_word":
                     if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
@@ -247,8 +247,25 @@ def run_messenger():
                     continue
                 
                 if text_lower == "➖ удалить":
-                    admin_state[user_id] = {"mode": "del_donor"}
-                    send_message(vk, user_id, "Введите ID группы или ссылку для удаления:", get_back_admin_keyboard())
+                    donors = get_donor_groups()
+                    if not donors:
+                        send_message(vk, user_id, "📭 Список групп пуст.", get_donor_groups_keyboard())
+                    else:
+                        send_message(vk, user_id, "Выберите группу для удаления:", get_remove_donor_keyboard(donors, vk_user))
+                    continue
+                
+                # Удаление группы по кнопке с названием
+                if text_lower.startswith("➖ "):
+                    donors = get_donor_groups()
+                    for g in donors:
+                        try:
+                            name = get_group_name(vk_user, g)
+                        except:
+                            name = str(g)
+                        if text_lower == f"➖ {name}".lower()[:40]:
+                            remove_donor_group(g)
+                            send_message(vk, user_id, f"✅ Группа [{name}] удалена!", get_donor_groups_keyboard())
+                            break
                     continue
                 
                 if text_lower == "📋 список слов":
