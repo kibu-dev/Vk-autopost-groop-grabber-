@@ -1,6 +1,6 @@
 import re
 import json
-from db import get_forbidden_words, add_to_moderation, is_post_grabbed, add_to_grab_history
+from db import get_forbidden_words, add_to_moderation
 
 def load_json_file(filepath, default=None):
     try:
@@ -12,8 +12,6 @@ def load_json_file(filepath, default=None):
 def save_json_file(filepath, data):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-# ─── Проверки текста ───
 
 def is_spam(text):
     if not text:
@@ -45,8 +43,6 @@ def contains_anonymous(text):
             return True
     return False
 
-# ─── Вложения ───
-
 def build_attachments(post):
     attachments = []
     for a in post.get("attachments", []):
@@ -67,38 +63,22 @@ def parse_attachments_string(attachments_str):
         return None
     return attachments_str
 
-# ─── Определение ID группы ───
-
 def resolve_group_id(vk, identifier):
-    """Получает числовой ID группы по ссылке, короткому имени или числу"""
     identifier = identifier.strip().rstrip('/')
-    
-    # Если уже число — возвращаем
     if identifier.lstrip('-').isdigit():
         return int(identifier)
-    
-    # Извлекаем ID/имя из ссылки
-    # vk.com/club123, vk.ru/club123, vk.com/groupname и т.д.
     match = re.search(r'vk\.(?:com|ru)/(?:club|public|wall-)?([\w.]+)', identifier)
     if match:
         identifier = match.group(1)
-    
-    # Если осталось club123 — убираем club
     if identifier.lower().startswith('club'):
         identifier = identifier[4:]
-    
-    # Если это число — возвращаем
     if identifier.isdigit():
         return int(identifier)
-    
-    # Иначе ищем по короткому имени
     try:
         result = vk.groups.getById(group_id=identifier)
         return result[0]["id"]
     except:
         return None
-
-# ─── API ВК ───
 
 def get_user_name(vk, user_id):
     try:
@@ -124,8 +104,6 @@ def send_message(vk, user_id, text, keyboard=None):
         )
     except Exception as e:
         print(f"Ошибка отправки: {e}")
-
-# ─── Модерация ───
 
 def moderate_post(vk, post_id, uid, text, attachments_str, reason, post_type="suggestion"):
     from config import ADMIN_ID
