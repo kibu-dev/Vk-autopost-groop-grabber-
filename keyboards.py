@@ -1,92 +1,87 @@
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
-# ─── Пользовательские ───
-
 def get_main_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button("🗑 Удалить мой пост", color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_line()
-    keyboard.add_button("🆘 Написать в поддержку", color=VkKeyboardColor.SECONDARY)
-    return keyboard
+    k = VkKeyboard(one_time=False)
+    k.add_button("🗑 Удалить мой пост", VkKeyboardColor.NEGATIVE)
+    k.add_line()
+    k.add_button("🆘 Написать в поддержку", VkKeyboardColor.SECONDARY)
+    return k
 
 def get_posts_keyboard(posts):
-    keyboard = VkKeyboard(one_time=True)
-    for i, post in enumerate(posts[:10], 1):
-        preview = post["text"][:20] + "..." if len(post["text"]) > 20 else post["text"]
-        keyboard.add_button(f"🗑 {i}. Пост #{post['post_id']}: {preview}", color=VkKeyboardColor.SECONDARY)
+    k = VkKeyboard(one_time=True)
+    for i, p in enumerate(posts[:10], 1):
+        preview = p["text"][:20] + "..." if len(p["text"]) > 20 else p["text"]
+        k.add_button(f"🗑 {i}. #{p['post_id']}: {preview}", VkKeyboardColor.SECONDARY)
         if i % 2 == 0 and i != len(posts[:10]):
-            keyboard.add_line()
-    keyboard.add_line()
-    keyboard.add_button("🔙 Назад", color=VkKeyboardColor.PRIMARY)
-    return keyboard
+            k.add_line()
+    k.add_line()
+    k.add_button("🔙 Назад", VkKeyboardColor.PRIMARY)
+    return k
 
 def get_confirm_keyboard():
-    keyboard = VkKeyboard(one_time=True)
-    keyboard.add_button("✅ Да, удалить", color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_button("❌ Нет", color=VkKeyboardColor.SECONDARY)
-    return keyboard
+    k = VkKeyboard(one_time=True)
+    k.add_button("✅ Да, удалить", VkKeyboardColor.NEGATIVE)
+    k.add_button("❌ Нет", VkKeyboardColor.SECONDARY)
+    return k
 
 def get_cancel_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button("🔙 Отмена", color=VkKeyboardColor.SECONDARY)
-    return keyboard
-
-# ─── Админские ───
+    k = VkKeyboard(one_time=False)
+    k.add_button("🔙 Отмена", VkKeyboardColor.SECONDARY)
+    return k
 
 def get_admin_main_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button("📢 Модерация", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("👥 Группы-доноры", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_line()
-    keyboard.add_button("🚫 Запрет-слова", color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_button("📊 Статистика", color=VkKeyboardColor.SECONDARY)
-    keyboard.add_line()
-    keyboard.add_button("🔙 Пользовательское меню", color=VkKeyboardColor.SECONDARY)
-    return keyboard
+    k = VkKeyboard(one_time=False)
+    k.add_button("📢 Модерация", VkKeyboardColor.PRIMARY)
+    k.add_button("👥 Группы-доноры", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("🚫 Запрет-слова", VkKeyboardColor.NEGATIVE)
+    k.add_button("📊 Статистика", VkKeyboardColor.SECONDARY)
+    k.add_line()
+    k.add_button("🔙 Пользовательское меню", VkKeyboardColor.SECONDARY)
+    return k
 
 def get_donor_groups_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button("📋 Список групп", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("➕ Добавить группу", color=VkKeyboardColor.POSITIVE)
-    keyboard.add_line()
-    keyboard.add_button("➖ Удалить группу", color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_button("🔙 Назад", color=VkKeyboardColor.SECONDARY)
-    return keyboard
+    k = VkKeyboard(one_time=False)
+    k.add_button("📋 Список групп", VkKeyboardColor.PRIMARY)
+    k.add_button("➕ Добавить группу", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("➖ Удалить группу", VkKeyboardColor.NEGATIVE)
+    k.add_button("🔙 Назад", VkKeyboardColor.SECONDARY)
+    return k
 
 def get_forbidden_words_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button("📋 Список слов", color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button("➕ Добавить слово", color=VkKeyboardColor.POSITIVE)
-    keyboard.add_line()
-    keyboard.add_button("➖ Удалить слово", color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_button("🔙 Назад", color=VkKeyboardColor.SECONDARY)
-    return keyboard
+    k = VkKeyboard(one_time=False)
+    k.add_button("📋 Список слов", VkKeyboardColor.PRIMARY)
+    k.add_button("➕ Добавить слово", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("➖ Удалить слово", VkKeyboardColor.NEGATIVE)
+    k.add_button("🔙 Назад", VkKeyboardColor.SECONDARY)
+    return k
 
 def get_moderation_keyboard(post_id):
-    keyboard = VkKeyboard(one_time=True)
-    keyboard.add_button(f"✅ Опубл {post_id}", color=VkKeyboardColor.POSITIVE)
-    keyboard.add_line()
-    keyboard.add_button(f"❌ Удалить {post_id}", color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_button(f"⏭ Пропустить {post_id}", color=VkKeyboardColor.SECONDARY)
-    return keyboard
+    k = VkKeyboard(one_time=True)
+    k.add_button(f"✅ Опубл {post_id}", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button(f"❌ Удалить {post_id}", VkKeyboardColor.NEGATIVE)
+    k.add_button(f"⏭ Пропустить {post_id}", VkKeyboardColor.SECONDARY)
+    return k
 
 def get_back_admin_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button("🔙 Назад в админку", color=VkKeyboardColor.PRIMARY)
-    return keyboard
+    k = VkKeyboard(one_time=False)
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.PRIMARY)
+    return k
 
 def get_remove_donor_keyboard(donors, vk_user=None):
-    keyboard = VkKeyboard(one_time=True)
-    for i, group_id in enumerate(donors[:10], 1):
+    k = VkKeyboard(one_time=True)
+    for i, g in enumerate(donors[:10], 1):
         try:
             from utils import get_group_name
-            name = get_group_name(vk_user, group_id) if vk_user else str(group_id)
+            name = get_group_name(vk_user, g) if vk_user else str(g)
         except:
-            name = str(group_id)
-        label = f"➖ {name}"[:40]
-        keyboard.add_button(label, color=VkKeyboardColor.NEGATIVE)
+            name = str(g)
+        k.add_button(f"➖ {name}"[:40], VkKeyboardColor.NEGATIVE)
         if i % 2 == 0 and i != len(donors[:10]):
-            keyboard.add_line()
-    keyboard.add_line()
-    keyboard.add_button("🔙 Назад в админку", color=VkKeyboardColor.SECONDARY)
-    return keyboard
+            k.add_line()
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
