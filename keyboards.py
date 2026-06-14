@@ -10,12 +10,10 @@ def get_main_keyboard():
 def get_posts_keyboard(posts):
     k = VkKeyboard(one_time=True)
     for i, p in enumerate(posts[:10], 1):
-        preview = p["text"][:20] + "..." if len(p["text"]) > 20 else p["text"]
+        preview = (p["text"][:20] + "...") if len(p["text"]) > 20 else p["text"]
         k.add_button(f"🗑 {i}. #{p['post_id']}: {preview}", VkKeyboardColor.SECONDARY)
-        if i % 2 == 0 and i != len(posts[:10]):
-            k.add_line()
-    k.add_line()
-    k.add_button("🔙 Назад", VkKeyboardColor.PRIMARY)
+        if i % 2 == 0 and i != len(posts[:10]): k.add_line()
+    k.add_line(); k.add_button("🔙 Назад", VkKeyboardColor.PRIMARY)
     return k
 
 def get_confirm_keyboard():
@@ -77,11 +75,8 @@ def get_remove_donor_keyboard(donors, vk_user=None):
         try:
             from utils import get_group_name
             name = get_group_name(vk_user, g) if vk_user else str(g)
-        except:
-            name = str(g)
+        except: name = str(g)
         k.add_button(f"➖ {name}"[:40], VkKeyboardColor.NEGATIVE)
-        if i % 2 == 0 and i != len(donors[:10]):
-            k.add_line()
-    k.add_line()
-    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+        if i % 2 == 0 and i != len(donors[:10]): k.add_line()
+    k.add_line(); k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
