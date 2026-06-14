@@ -63,10 +63,31 @@ def build_attachments(post):
     return ",".join(attachments) if attachments else None
 
 def parse_attachments_string(attachments_str):
-    """Из строки обратно в список (для API)"""
     if not attachments_str:
         return None
     return attachments_str
+
+# ─── Определение ID группы ───
+
+def resolve_group_id(vk, identifier):
+    """Получает числовой ID группы по ссылке, короткому имени или числу"""
+    identifier = identifier.strip().rstrip('/')
+    
+    # Если уже число — возвращаем
+    if identifier.lstrip('-').isdigit():
+        return int(identifier)
+    
+    # Извлекаем короткое имя из ссылки
+    match = re.search(r'vk\.com/([\w.]+)', identifier)
+    if match:
+        identifier = match.group(1)
+    
+    # Запрашиваем API
+    try:
+        result = vk.groups.getById(group_id=identifier)
+        return result[0]["id"]
+    except:
+        return None
 
 # ─── API ВК ───
 
@@ -98,7 +119,6 @@ def send_message(vk, user_id, text, keyboard=None):
 # ─── Модерация ───
 
 def moderate_post(vk, post_id, uid, text, attachments_str, reason, post_type="suggestion"):
-    """Добавляет пост в очередь модерации и шлёт уведомление админу"""
     from config import ADMIN_ID
     add_to_moderation(post_id, post_type, uid, text, attachments_str or "", reason)
     if ADMIN_ID:
