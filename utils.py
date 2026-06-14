@@ -77,12 +77,21 @@ def resolve_group_id(vk, identifier):
     if identifier.lstrip('-').isdigit():
         return int(identifier)
     
-    # Извлекаем короткое имя из ссылки
-    match = re.search(r'vk\.com/([\w.]+)', identifier)
+    # Извлекаем ID/имя из ссылки
+    # vk.com/club123, vk.ru/club123, vk.com/groupname и т.д.
+    match = re.search(r'vk\.(?:com|ru)/(?:club|public|wall-)?([\w.]+)', identifier)
     if match:
         identifier = match.group(1)
     
-    # Запрашиваем API
+    # Если осталось club123 — убираем club
+    if identifier.lower().startswith('club'):
+        identifier = identifier[4:]
+    
+    # Если это число — возвращаем
+    if identifier.isdigit():
+        return int(identifier)
+    
+    # Иначе ищем по короткому имени
     try:
         result = vk.groups.getById(group_id=identifier)
         return result[0]["id"]
