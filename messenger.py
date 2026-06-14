@@ -9,7 +9,7 @@ from keyboards import *
 # Состояния
 waiting_support = set()
 selected_post_for_delete = {}
-admin_state = {}  # user_id: {"mode": "...", "data": {}}
+admin_state = {}
 
 def run_messenger():
     vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131")
@@ -32,9 +32,8 @@ def run_messenger():
                 state = admin_state[user_id]
                 mode = state.get("mode")
                 
-                # Добавление группы
                 if mode == "add_donor":
-                    if text.lower() in ["🔙 отмена", "🔙 назад в админку"]:
+                    if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     else:
@@ -48,9 +47,8 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                     continue
                 
-                # Удаление группы
                 if mode == "del_donor":
-                    if text.lower() in ["🔙 отмена", "🔙 назад в админку"]:
+                    if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     else:
@@ -67,9 +65,8 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                     continue
                 
-                # Добавление слова
                 if mode == "add_word":
-                    if text.lower() in ["🔙 отмена", "🔙 назад в админку"]:
+                    if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     else:
@@ -79,9 +76,8 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                     continue
                 
-                # Удаление слова
                 if mode == "del_word":
-                    if text.lower() in ["🔙 отмена", "🔙 назад в админку"]:
+                    if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     else:
@@ -95,7 +91,7 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                     continue
             
-            # ─── ПОДДЕРЖКА (для всех) ───
+            # ─── ПОДДЕРЖКА ───
             if user_id in waiting_support:
                 if text.lower() in ["🔙 отмена", "/cancel"]:
                     waiting_support.discard(user_id)
@@ -119,10 +115,9 @@ def run_messenger():
                             send_message(vk, user_id, "❌ Ошибка.", get_main_keyboard())
                 continue
             
-            # ─── КОМАНДЫ ───
+            # ─── ОСНОВНЫЕ КОМАНДЫ ───
             text_lower = text.lower()
             
-            # Старт
             if text_lower in ["начать", "меню", "start"]:
                 kb = get_admin_main_keyboard() if is_admin else get_main_keyboard()
                 send_message(vk, user_id, "👋 Добро пожаловать!", kb)
@@ -187,18 +182,15 @@ def run_messenger():
             
             # ─── АДМИНСКИЕ ───
             if is_admin:
-                # Назад в админку
-                if text_lower == "🔙 назад в админку":
+                if text_lower in ["🔙 назад в админку", "🔙 назад"]:
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
                     continue
                 
-                # Переключение в пользовательское меню
                 if text_lower == "🔙 пользовательское меню":
                     send_message(vk, user_id, "Пользовательское меню:", get_main_keyboard())
                     continue
                 
-                # Главное меню
                 if text_lower == "📢 модерация":
                     posts = get_moderation_posts()
                     if not posts:
@@ -230,7 +222,6 @@ def run_messenger():
                     send_message(vk, user_id, msg, get_admin_main_keyboard())
                     continue
                 
-                # Группы-доноры
                 if text_lower == "📋 список групп":
                     donors = get_donor_groups()
                     if not donors:
@@ -256,7 +247,6 @@ def run_messenger():
                     send_message(vk, user_id, "Введите ID группы для удаления:", get_back_admin_keyboard())
                     continue
                 
-                # Запрет-слова
                 if text_lower == "📋 список слов":
                     words = get_forbidden_words()
                     if not words:
@@ -275,7 +265,6 @@ def run_messenger():
                     send_message(vk, user_id, "Введите слово для удаления:", get_back_admin_keyboard())
                     continue
                 
-                # Обработка кнопок модерации
                 if text_lower.startswith("✅ опубл "):
                     try:
                         post_id = int(text.split()[-1])
@@ -304,12 +293,6 @@ def run_messenger():
                 if text_lower.startswith("❌ удалить "):
                     try:
                         post_id = int(text.split()[-1])
-                        # Сначала пробуем удалить из предложки
-                        try:
-                            vk_user.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
-                        except:
-                            pass
-                        # Потом из опубликованных
                         try:
                             vk_user.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
                         except:
