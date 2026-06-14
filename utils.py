@@ -1,5 +1,6 @@
 import re
 import json
+import vk_api
 from db import get_forbidden_words, add_to_moderation
 
 def load_json_file(filepath, default=None):
@@ -105,16 +106,35 @@ def send_message(vk, user_id, text, keyboard=None):
     except Exception as e:
         print(f"Ошибка отправки: {e}")
 
-def moderate_post(vk, post_id, uid, text, attachments_str, reason, post_type="suggestion"):
-    from config import ADMIN_ID
+def moderate_post(vk_user, post_id, uid, text, attachments_str, reason, post_type="suggestion"):
+    from config import ADMIN_ID, GROUP_TOKEN, GROUP_ID
+    
     add_to_moderation(post_id, post_type, uid, text, attachments_str or "", reason)
+    
     if ADMIN_ID:
         try:
+            vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
+            
             from keyboards import get_moderation_keyboard
             keyboard = get_moderation_keyboard(post_id)
-            msg = f"🚨 ПОДОЗРИТЕЛЬНЫЙ ПОСТ ({reason})\n\nТекст:\n{text[:500]}\n\nID: {post_id}"
+            
+            try:
+                user = vk_user.users.get(user_ids=uid, fields="first_name,last_name")[0]
+                author = f"{user['first_name']} {user['last_name']}"
+            except:
+                author = f"id{uid}"
+            
+            msg = f"🚨 ПОДОЗРИТЕЛЬНЫЙ ПОСТ ({reason})\n\nАвтор: {author}\n\nТекст:\n{text[:500]}\n\nID: {post_id}"
             if attachments_str:
                 msg += "\n📎 Есть вложения"
-            send_message(vk, ADMIN_ID, msg, keyboard)
+            
+            vk_group.messages.send(
+                user_id=ADMIN_ID,
+                message=msg,
+                random_id=0,
+                keyboard=keyboard.get_keyboard(),
+                group_id=GROUP_ID
+            )
+            print(f"✅ Уведомление админу отправлено (пост {post_id}, {reason})")
         except Exception as e:
             print(f"Ошибка уведомления админа: {e}")
