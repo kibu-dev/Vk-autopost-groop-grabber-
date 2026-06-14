@@ -18,10 +18,6 @@ GRAB_INTERVAL = int(os.getenv("GRAB_INTERVAL", "1800"))
 GRAB_POSTS_PER_GROUP = int(os.getenv("GRAB_POSTS_PER_GROUP", "3"))
 MAX_GRAB_PER_GROUP_DAY = int(os.getenv("MAX_GRAB_PER_GROUP_DAY", "2"))
 
-# ID групп-доноров (по умолчанию пусто, админ добавит через бота)
-DONOR_GROUPS_STR = os.getenv("DONOR_GROUPS", "")
-DEFAULT_DONORS = [int(g.strip()) for g in DONOR_GROUPS_STR.split(",") if g.strip().isdigit()]
-
 # Настройки поста от граббера
-GRABBER_POST_PREFIX = os.getenv("GRABBER_POST_PREFIX", "")  # можно добавить хештег, например "#юмор"
-GRABBER_POST_SUFFIX = os.getenv("GRABBER_POST_SUFFIX", "")  # подпись в конце, если нужна
+GRABBER_POST_PREFIX = os.getenv("GRABBER_POST_PREFIX", "")
+GRABBER_POST_SUFFIX = os.getenv("GRABBER_POST_SUFFIX", "")
