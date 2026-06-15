@@ -4,15 +4,16 @@ from config import *
 from utils import *
 
 def run_publisher():
+    global last_publish_time
     vk = vk_api.VkApi(token=USER_TOKEN).get_api()
-    last_pub = 0
     notified_posts = set()
+    utils.last_publish_time = 0
     print("🚀 Публикатор запущен")
 
     while True:
         try:
             now = time.time()
-            can_publish = (now - last_pub >= PUBLISH_INTERVAL)
+            can_publish = (now - utils.last_publish_time >= PUBLISH_INTERVAL)
 
             items = vk.wall.get(owner_id=-GROUP_ID, filter="suggests", count=100)["items"]
             items.sort(key=lambda x: x.get("date", 0))
@@ -22,16 +23,13 @@ def run_publisher():
                 uid = post.get("from_id", 0)
                 text = post.get("text", "")
 
-                # Проверки ВСЕГДА (каждые 60 сек)
                 if is_spam(text) or contains_any_link(text):
                     reason = "спам-слова" if is_spam(text) else "ссылки"
                     if pid not in notified_posts:
                         notified_posts.add(pid)
                         moderate_post(vk, pid, uid, text, build_attachments(post), reason, "suggestion")
-                        print(f"⚠️ Уведомление админу: пост #{pid} ({reason})")
                     continue
 
-                # Публикация — только если интервал вышел
                 if not can_publish:
                     continue
 
@@ -48,7 +46,7 @@ def run_publisher():
                 result = vk.wall.post(owner_id=-GROUP_ID, message=final, attachments=att, from_group=1)
                 vk.wall.delete(owner_id=-GROUP_ID, post_id=pid)
                 add_published_post(result["post_id"], uid if uid > 0 else -uid, text)
-                last_pub = time.time()
+                utils.last_publish_time = time.time()
                 notified_posts.discard(pid)
                 print(f"✅ Опубликован #{pid}")
                 break
