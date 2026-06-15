@@ -4,6 +4,7 @@ from config import *
 from utils import *
 
 def run_grabber():
+    global next_grab_time
     vk = vk_api.VkApi(token=USER_TOKEN).get_api()
     print("🎣 Граббер запущен")
 
@@ -28,7 +29,6 @@ def run_grabber():
                             add_grabbed_post(group_id, pid)
                             att = build_attachments(post)
 
-                            # Кидаем в предложку (публикатор разберётся)
                             vk.wall.post(owner_id=-GROUP_ID, message=text, attachments=att, from_group=0)
                             print(f"📨 Пост {pid} из группы {group_id} → предложка")
 
@@ -40,6 +40,7 @@ def run_grabber():
                     except Exception as e:
                         print(f"❌ Группа {group_id}: {e}")
 
+            utils.next_grab_time = time.time() + GRAB_INTERVAL
             time.sleep(GRAB_INTERVAL)
 
         except Exception as e:
