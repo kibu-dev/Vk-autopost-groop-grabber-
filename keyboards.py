@@ -30,11 +30,12 @@ def get_cancel_keyboard():
 def get_admin_main_keyboard():
     k = VkKeyboard(one_time=False)
     k.add_button("📢 Модерация", VkKeyboardColor.PRIMARY)
+    k.add_button("📦 Буфер граббера", VkKeyboardColor.PRIMARY)
+    k.add_line()
     k.add_button("👥 Группы-доноры", VkKeyboardColor.PRIMARY)
-    k.add_line()
     k.add_button("🚫 Запрет-слова", VkKeyboardColor.NEGATIVE)
-    k.add_button("📊 Статистика", VkKeyboardColor.SECONDARY)
     k.add_line()
+    k.add_button("📊 Статистика", VkKeyboardColor.SECONDARY)
     k.add_button("🔙 Пользовательское меню", VkKeyboardColor.SECONDARY)
     return k
 
@@ -64,19 +65,10 @@ def get_moderation_keyboard(post_id):
     k.add_button(f"⏭ Пропустить {post_id}", VkKeyboardColor.SECONDARY)
     return k
 
-def get_back_admin_keyboard():
-    k = VkKeyboard(one_time=False)
-    k.add_button("🔙 Назад в админку", VkKeyboardColor.PRIMARY)
+def get_buffer_keyboard(buffer_id):
+    k = VkKeyboard(one_time=True)
+    k.add_button(f"🗑 Буфер {buffer_id}", VkKeyboardColor.NEGATIVE)
     return k
 
-def get_remove_donor_keyboard(donors, vk_user=None):
-    k = VkKeyboard(one_time=True)
-    for i, g in enumerate(donors[:10], 1):
-        try:
-            from utils import get_group_name
-            name = get_group_name(vk_user, g) if vk_user else str(g)
-        except: name = str(g)
-        k.add_button(f"➖ {name}"[:40], VkKeyboardColor.NEGATIVE)
-        if i % 2 == 0 and i != len(donors[:10]): k.add_line()
-    k.add_line(); k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
-    return k
+def get_back_admin_keyboard():
+    k = VkKeyboard
