@@ -1,6 +1,7 @@
 import re
 import json
 import vk_api
+import time
 from datetime import datetime, timedelta
 
 GROUPS_FILE = "groups.json"
@@ -176,12 +177,51 @@ def remove_from_moderation(post_id):
     global moderation_queue
     moderation_queue = [m for m in moderation_queue if m["post_id"] != post_id]
 
+# ─── Статистика с таймерами ───
+
+# Время последних событий (заполняется из publisher.py и grabber.py)
+last_publish_time = 0
+last_grab_time = 0
+next_grab_time = 0
+
 def get_stats():
+    from config import PUBLISH_INTERVAL, GRAB_INTERVAL
+    global last_publish_time, last_grab_time, next_grab_time
+    
+    now = time.time()
+    
+    # До следующей публикации
+    if last_publish_time:
+        next_pub = last_publish_time + PUBLISH_INTERVAL - now
+        next_pub_str = f"{int(next_pub // 60)} мин {int(next_pub % 60)} сек" if next_pub > 0 else "можно сейчас"
+    else:
+        next_pub_str = "ожидание первого поста"
+    
+    # До следующей проверки граббера
+    if next_grab_time:
+        next_gr = next_grab_time - now
+        next_gr_str = f"{int(next_gr // 60)} мин {int(next_gr % 60)} сек" if next_gr > 0 else "прямо сейчас"
+    else:
+        next_gr_str = "ожидание..."
+    
+    # Постов в предложке
+    try:
+        import vk_api as vkapi
+        from config import USER_TOKEN, GROUP_ID
+        vk = vkapi.VkApi(token=USER_TOKEN).get_api()
+        suggests = vk.wall.get(owner_id=-GROUP_ID, filter="suggests", count=100)["items"]
+        pending_count = len(suggests)
+    except:
+        pending_count = "?"
+    
     return {
         "donor_count": len(get_donor_groups()),
         "pending_moderation": len(moderation_queue),
-        "total_user_posts": len(load_json(PUBLISHED_FILE, {"posts": []})["posts"]),
-        "total_grabbed": len(load_json(GRABBED_FILE, {"posts": []})["posts"])
+        "total_published": len(load_json(PUBLISHED_FILE, {"posts": []})["posts"]),
+        "total_grabbed": len(load_json(GRABBED_FILE, {"posts": []})["posts"]),
+        "pending_suggests": pending_count,
+        "next_publish": next_pub_str,
+        "next_grab": next_gr_str,
     }
 
 def moderate_post(vk_user, post_id, uid, text, attachments_str, reason, post_type="suggestion"):
