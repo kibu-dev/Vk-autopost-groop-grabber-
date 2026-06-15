@@ -25,7 +25,6 @@ def run_messenger():
         text = event.text.strip() if event.text else ""
         is_admin = (user_id == ADMIN_ID)
         
-        # ─── СОСТОЯНИЯ ───
         if is_admin and user_id in admin_state:
             state = admin_state[user_id]
             mode = state.get("mode")
@@ -51,10 +50,16 @@ def run_messenger():
                     send_message(vk, user_id, f"✅ Удалено!", get_forbidden_words_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не найдено.", get_forbidden_words_keyboard())
+            elif mode == "del_buffer":
+                try:
+                    buf_id = int(text.strip())
+                    remove_from_buffer(buf_id)
+                    send_message(vk, user_id, f"✅ Удалено из буфера!", get_admin_main_keyboard())
+                except:
+                    send_message(vk, user_id, "❌ Неверный ID.", get_admin_main_keyboard())
             admin_state.pop(user_id, None)
             continue
         
-        # ─── ПОДДЕРЖКА ───
         if user_id in waiting_support:
             waiting_support.discard(user_id)
             if text.lower() not in ["🔙 отмена", "/cancel"]:
@@ -69,7 +74,6 @@ def run_messenger():
                 send_message(vk, user_id, "Отменено.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
             continue
         
-        # ─── ОСНОВНЫЕ ───
         t = text.lower()
         
         if t in ["начать", "меню", "start"]:
@@ -107,7 +111,6 @@ def run_messenger():
                     selected_post[user_id] = posts[idx]['post_id']
                     send_message(vk, user_id, f"⚠️ Удалить #{posts[idx]['post_id']}?", get_confirm_keyboard())
         
-        # ─── АДМИН ───
         elif is_admin:
             if t in ["🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
@@ -121,6 +124,13 @@ def run_messenger():
                         send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}", get_moderation_keyboard(p['post_id']))
                 else:
                     send_message(vk, user_id, "✅ Пусто.", get_admin_main_keyboard())
+            elif t == "📦 буфер граббера":
+                buf = get_grab_buffer()
+                if buf:
+                    for p in buf[:5]:
+                        send_message(vk, user_id, f"📦 #{p['id']} (из {p['from_group']})\n{p['text'][:200]}", get_buffer_keyboard(p['id']))
+                else:
+                    send_message(vk, user_id, "📭 Буфер пуст.", get_admin_main_keyboard())
             elif t == "👥 группы-доноры":
                 send_message(vk, user_id, "Группы:", get_donor_groups_keyboard())
             elif t == "🚫 запрет-слова":
@@ -130,7 +140,7 @@ def run_messenger():
                 msg = (
                     f"📊 Статистика:\n"
                     f"• Опубликовано: {s['total_published']}\n"
-                    f"• В предложке: {s['pending_suggests']}\n"
+                    f"• В буфере: {s['buffer_count']}\n"
                     f"• Взято граббером: {s['total_grabbed']}\n"
                     f"• На модерации: {s['pending_moderation']}\n"
                     f"• Доноров: {s['donor_count']}"
@@ -173,6 +183,13 @@ def run_messenger():
             elif t == "➖ удалить слово":
                 admin_state[user_id] = {"mode": "del_word"}
                 send_message(vk, user_id, "Введите слово:", get_back_admin_keyboard())
+            elif t.startswith("🗑 буфер "):
+                try:
+                    buf_id = int(t.split()[-1])
+                    remove_from_buffer(buf_id)
+                    send_message(vk, user_id, f"✅ Удалено из буфера!", get_admin_main_keyboard())
+                except:
+                    send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
             elif t.startswith("✅ опубл "):
                 pid = int(t.split()[-1])
                 try:
