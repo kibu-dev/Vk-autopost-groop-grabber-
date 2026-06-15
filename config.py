@@ -10,7 +10,8 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))
 PUBLISH_INTERVAL = int(os.getenv("PUBLISH_INTERVAL", "900"))
-GRAB_INTERVAL = int(os.getenv("GRAB_INTERVAL", "1800"))
+GRAB_INTERVAL = int(os.getenv("GRAB_INTERVAL", "3600"))
+GRAB_PUB_INTERVAL = int(os.getenv("GRAB_PUB_INTERVAL", "3600"))
 
 GRAB_POSTS_PER_GROUP = int(os.getenv("GRAB_POSTS_PER_GROUP", "3"))
-MAX_GRAB_PER_GROUP_DAY = int(os.getenv("MAX_GRAB_PER_GROUP_DAY", "2"))
+MAX_GRAB_PER_GROUP_DAY = int(os.getenv("MAX_GRAB_PER_GROUP_DAY", "3"))
