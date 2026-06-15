@@ -14,6 +14,7 @@ def run_publisher():
             now = time.time()
             can_publish = (now - last_pub >= PUBLISH_INTERVAL)
 
+            # Проверяем предложку ВСЕГДА (каждые 60 сек)
             items = vk.wall.get(owner_id=-GROUP_ID, filter="suggests", count=100)["items"]
             items.sort(key=lambda x: x.get("date", 0))
 
@@ -22,6 +23,7 @@ def run_publisher():
                 uid = post.get("from_id", 0)
                 text = post.get("text", "")
 
+                # Спам/ссылки — проверяем и уведомляем ВСЕГДА
                 if is_spam(text) or contains_any_link(text):
                     reason = "спам-слова" if is_spam(text) else "ссылки"
                     if pid not in notified_posts:
@@ -29,9 +31,11 @@ def run_publisher():
                         moderate_post(vk, pid, uid, text, build_attachments(post), reason, "suggestion")
                     continue
 
+                # Чистый пост, но интервал не вышел — пропускаем
                 if not can_publish:
                     continue
 
+                # Публикуем (один за цикл)
                 if uid < 0:
                     final = text
                 else:
@@ -47,9 +51,11 @@ def run_publisher():
                 add_published_post(result["post_id"], uid if uid > 0 else -uid, text)
                 last_pub = time.time()
                 notified_posts.discard(pid)
+                can_publish = False
                 print(f"✅ Опубликован #{pid}")
-                break
+                break  # Один пост — выход из for
 
+            # Чистим notified
             existing_ids = {p["id"] for p in items}
             notified_posts = {p for p in notified_posts if p in existing_ids}
 
