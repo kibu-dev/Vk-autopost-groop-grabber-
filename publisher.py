@@ -6,6 +6,7 @@ from utils import *
 def run_publisher():
     vk = vk_api.VkApi(token=USER_TOKEN).get_api()
     last_pub = 0
+    notified_posts = set()
     print("🚀 Публикатор запущен")
 
     while True:
@@ -23,21 +24,20 @@ def run_publisher():
                 uid = post.get("from_id", 0)
                 text = post.get("text", "")
 
-                # Проверка на спам
                 if is_spam(text):
-                    if not any(m["post_id"] == pid for m in get_moderation_posts()):
+                    if pid not in notified_posts:
+                        notified_posts.add(pid)
                         moderate_post(vk, pid, uid, text, build_attachments(post), "спам-слова", "suggestion")
                     continue
 
-                # Проверка на ссылки
                 if contains_any_link(text):
-                    if not any(m["post_id"] == pid for m in get_moderation_posts()):
+                    if pid not in notified_posts:
+                        notified_posts.add(pid)
                         moderate_post(vk, pid, uid, text, build_attachments(post), "ссылки", "suggestion")
                     continue
 
-                # Публикация
                 if uid < 0:
-                    final = text  # от граббера — без подписи
+                    final = text
                 else:
                     if contains_anonymous(text):
                         final = f"{text}\n\nАвтор: Аноним"
@@ -50,8 +50,12 @@ def run_publisher():
                 vk.wall.delete(owner_id=-GROUP_ID, post_id=pid)
                 add_published_post(result["post_id"], uid if uid > 0 else -uid, text)
                 last_pub = time.time()
+                notified_posts.discard(pid)
                 print(f"✅ Опубликован #{pid}")
                 break
+
+            existing_ids = {p["id"] for p in items}
+            notified_posts = {p for p in notified_posts if p in existing_ids}
 
             time.sleep(CHECK_INTERVAL)
 
