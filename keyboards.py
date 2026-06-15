@@ -71,4 +71,18 @@ def get_buffer_keyboard(buffer_id):
     return k
 
 def get_back_admin_keyboard():
-    k = VkKeyboard
+    k = VkKeyboard(one_time=False)
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.PRIMARY)
+    return k
+
+def get_remove_donor_keyboard(donors, vk_user=None):
+    k = VkKeyboard(one_time=True)
+    for i, g in enumerate(donors[:10], 1):
+        try:
+            from utils import get_group_name
+            name = get_group_name(vk_user, g) if vk_user else str(g)
+        except: name = str(g)
+        k.add_button(f"➖ {name}"[:40], VkKeyboardColor.NEGATIVE)
+        if i % 2 == 0 and i != len(donors[:10]): k.add_line()
+    k.add_line(); k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
