@@ -1,12 +1,16 @@
 import re
 import json
 import vk_api
+import time
 from datetime import datetime, timedelta
 
 GROUPS_FILE = "groups.json"
 WORDS_FILE = "forbidden_words.json"
 GRABBED_FILE = "grabbed_posts.json"
 PUBLISHED_FILE = "published_posts.json"
+GRAB_BUFFER_FILE = "grab_buffer.json"
+LAST_PUB_FILE = "last_pub.json"
+LAST_GRAB_PUB_FILE = "last_grab_pub.json"
 
 def load_json(filepath, default=None):
     try:
@@ -70,6 +74,44 @@ def count_today_grabs(group_id):
     today = datetime.now().strftime("%Y-%m-%d")
     return sum(1 for p in data["posts"] if p["group_id"] == group_id and p["date"] == today)
 
+# ─── Буфер граббера ───
+
+def add_to_grab_buffer(text, attachments, from_group):
+    data = load_json(GRAB_BUFFER_FILE, {"buffer": []})
+    new_id = 1
+    if data["buffer"]:
+        new_id = max(p["id"] for p in data["buffer"]) + 1
+    data["buffer"].append({
+        "id": new_id,
+        "text": text,
+        "attachments": attachments or "",
+        "from_group": from_group,
+        "added_at": datetime.now().isoformat()
+    })
+    save_json(GRAB_BUFFER_FILE, data)
+    return new_id
+
+def get_grab_buffer():
+    data = load_json(GRAB_BUFFER_FILE, {"buffer": []})
+    return data["buffer"]
+
+def get_next_from_buffer():
+    buffer = get_grab_buffer()
+    if buffer:
+        return buffer[0]
+    return None
+
+def remove_from_buffer(buffer_id):
+    data = load_json(GRAB_BUFFER_FILE, {"buffer": []})
+    data["buffer"] = [p for p in data["buffer"] if p["id"] != buffer_id]
+    save_json(GRAB_BUFFER_FILE, data)
+
+def clear_buffer():
+    save_json(GRAB_BUFFER_FILE, {"buffer": []})
+
+def buffer_count():
+    return len(get_grab_buffer())
+
 # ─── Опубликованные посты ───
 
 def add_published_post(post_id, user_id, text):
@@ -98,6 +140,20 @@ def delete_user_post(user_id, post_id):
             save_json(PUBLISHED_FILE, data)
             return True
     return False
+
+# ─── Время публикаций ───
+
+def get_last_publish_time():
+    return load_json(LAST_PUB_FILE, {"time": 0}).get("time", 0)
+
+def save_last_publish_time(t):
+    save_json(LAST_PUB_FILE, {"time": t})
+
+def get_last_grab_publish_time():
+    return load_json(LAST_GRAB_PUB_FILE, {"time": 0}).get("time", 0)
+
+def save_last_grab_publish_time(t):
+    save_json(LAST_GRAB_PUB_FILE, {"time": t})
 
 # ─── Проверки ───
 
@@ -177,20 +233,12 @@ def remove_from_moderation(post_id):
     moderation_queue = [m for m in moderation_queue if m["post_id"] != post_id]
 
 def get_stats():
-    try:
-        from config import USER_TOKEN, GROUP_ID
-        vk = vk_api.VkApi(token=USER_TOKEN).get_api()
-        suggests = vk.wall.get(owner_id=-GROUP_ID, filter="suggests", count=100)["items"]
-        pending = len(suggests)
-    except:
-        pending = "?"
-    
     return {
         "donor_count": len(get_donor_groups()),
         "pending_moderation": len(moderation_queue),
         "total_published": len(load_json(PUBLISHED_FILE, {"posts": []})["posts"]),
         "total_grabbed": len(load_json(GRABBED_FILE, {"posts": []})["posts"]),
-        "pending_suggests": pending,
+        "buffer_count": buffer_count(),
     }
 
 def moderate_post(vk_user, post_id, uid, text, attachments_str, reason, post_type="suggestion"):
