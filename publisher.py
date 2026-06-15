@@ -22,20 +22,16 @@ def run_publisher():
                 uid = post.get("from_id", 0)
                 text = post.get("text", "")
 
-                # Проверки ВСЕГДА, независимо от интервала
-                if is_spam(text):
+                # Проверки ВСЕГДА (каждые 60 сек)
+                if is_spam(text) or contains_any_link(text):
+                    reason = "спам-слова" if is_spam(text) else "ссылки"
                     if pid not in notified_posts:
                         notified_posts.add(pid)
-                        moderate_post(vk, pid, uid, text, build_attachments(post), "спам-слова", "suggestion")
+                        moderate_post(vk, pid, uid, text, build_attachments(post), reason, "suggestion")
+                        print(f"⚠️ Уведомление админу: пост #{pid} ({reason})")
                     continue
 
-                if contains_any_link(text):
-                    if pid not in notified_posts:
-                        notified_posts.add(pid)
-                        moderate_post(vk, pid, uid, text, build_attachments(post), "ссылки", "suggestion")
-                    continue
-
-                # Публикация только если интервал вышел
+                # Публикация — только если интервал вышел
                 if not can_publish:
                     continue
 
@@ -57,7 +53,6 @@ def run_publisher():
                 print(f"✅ Опубликован #{pid}")
                 break
 
-            # Чистим notified
             existing_ids = {p["id"] for p in items}
             notified_posts = {p for p in notified_posts if p in existing_ids}
 
