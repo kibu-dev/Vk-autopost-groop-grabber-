@@ -122,24 +122,20 @@ def run_messenger():
             elif t == "📢 модерация":
                 posts = get_moderation_posts()
                 pending = get_pending_grabs()
-                skipped = get_skipped_posts()
 
-                if posts or pending or skipped:
+                if posts or pending:
                     if posts:
-                        send_message(vk, user_id, "👤 Подозрительные:", get_admin_main_keyboard())
-                        for p in posts[:5]:
+                        send_message(vk, user_id, f"👤 Подозрительные от пользователей ({len(posts)}):", get_admin_main_keyboard())
+                        for p in posts[:10]:
                             send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}",
                                          get_moderation_keyboard(p['post_id']))
                     if pending:
-                        send_message(vk, user_id, "🎣 Граббер:", get_admin_main_keyboard())
-                        for i, p in enumerate(pending[:5]):
+                        send_message(vk, user_id, f"🎣 Подозрительные от граббера ({len(pending)}):", get_admin_main_keyboard())
+                        for i, p in enumerate(pending[:10]):
                             msg = f"🚨 #{i+1} ({p['reason']})\nИз группы: {p['from_group']}\n\n{p['post']['text'][:300]}"
                             send_message(vk, user_id, msg, get_pending_grab_keyboard(i))
-                    if skipped:
-                        msg = "⏭ Пропущенные:\n" + ", ".join([f"#{s}" for s in skipped[:10]])
-                        send_message(vk, user_id, msg, get_admin_main_keyboard())
                 else:
-                    send_message(vk, user_id, "✅ Пусто.", get_admin_main_keyboard())
+                    send_message(vk, user_id, "✅ Нет подозрительных постов.", get_admin_main_keyboard())
 
             elif t == "📅 очередь постов":
                 scheduled = get_scheduled_posts()
@@ -232,7 +228,6 @@ def run_messenger():
                             vk_user.wall.delete(owner_id=-GROUP_ID, post_id=pid)
                             add_published_post(r["post_id"], puid, pt)
                             remove_from_moderation(pid)
-                            remove_skipped_post(pid)
                             send_message(vk, user_id, "✅ Опубликован!", get_admin_main_keyboard())
                             break
                 except Exception as e:
@@ -265,7 +260,6 @@ def run_messenger():
                 except:
                     pass
                 remove_from_moderation(pid)
-                remove_skipped_post(pid)
                 send_message(vk, user_id, "❌ Удалён.", get_admin_main_keyboard())
 
             elif t.startswith("❌ граббер "):
@@ -275,20 +269,6 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Удалён.", get_admin_main_keyboard())
                 except:
                     send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
-
-            elif t.startswith("⏭ пропустить "):
-                pid = int(t.split()[-1])
-                add_skipped_post(pid)
-                remove_from_moderation(pid)
-                send_message(vk, user_id, f"⏭ Пост #{pid} пропущен. Найти можно в Модерации.", get_admin_main_keyboard())
-
-            elif t.startswith("⏭ граббер "):
-                try:
-                    idx = int(t.split()[-1])
-                    remove_pending_grab(idx)
-                    send_message(vk, user_id, f"⏭ Пропущен.", get_admin_main_keyboard())
-                except:
-                    pass
 
         else:
             send_message(vk, user_id, "Нажмите кнопку.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
