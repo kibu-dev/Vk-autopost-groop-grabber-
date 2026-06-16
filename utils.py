@@ -11,6 +11,7 @@ PUBLISHED_FILE = "published_posts.json"
 SCHEDULED_FILE = "scheduled_posts.json"
 PENDING_GRAB_FILE = "pending_grab.json"
 LAST_PUB_FILE = "last_pub.json"
+SKIPPED_FILE = "skipped_posts.json"
 
 def load_json(filepath, default=None):
     try:
@@ -77,13 +78,11 @@ def count_today_grabs(group_id):
 # ─── Отложенные посты ───
 
 def get_next_free_hour():
-    """Находит ближайший свободный час (:00), не занятый в расписании"""
     scheduled = load_json(SCHEDULED_FILE, {"posts": []})["posts"]
     now = datetime.now()
     hour = now.replace(minute=0, second=0, microsecond=0)
     if now.minute > 0:
         hour += timedelta(hours=1)
-    
     while True:
         ts = int(hour.timestamp())
         if not any(p["time"] == ts for p in scheduled):
@@ -103,7 +102,6 @@ def add_scheduled_post(publish_date, text, from_group):
 
 def get_scheduled_posts():
     data = load_json(SCHEDULED_FILE, {"posts": []})
-    # Удаляем уже прошедшие
     now = int(time.time())
     data["posts"] = [p for p in data["posts"] if p["time"] > now]
     save_json(SCHEDULED_FILE, data)
@@ -114,7 +112,7 @@ def remove_scheduled_post(publish_time):
     data["posts"] = [p for p in data["posts"] if p["time"] != publish_time]
     save_json(SCHEDULED_FILE, data)
 
-# ─── Подозрительные посты граббера (ждут решения) ───
+# ─── Подозрительные граббера ───
 
 def add_pending_grab(post, from_group, reason):
     data = load_json(PENDING_GRAB_FILE, {"posts": []})
@@ -140,6 +138,27 @@ def remove_pending_grab(index):
         save_json(PENDING_GRAB_FILE, data)
         return True
     return False
+
+# ─── Пропущенные посты ───
+
+def is_post_skipped(post_id):
+    data = load_json(SKIPPED_FILE, {"posts": []})
+    return post_id in data["posts"]
+
+def add_skipped_post(post_id):
+    data = load_json(SKIPPED_FILE, {"posts": []})
+    if post_id not in data["posts"]:
+        data["posts"].append(post_id)
+        save_json(SKIPPED_FILE, data)
+
+def remove_skipped_post(post_id):
+    data = load_json(SKIPPED_FILE, {"posts": []})
+    if post_id in data["posts"]:
+        data["posts"].remove(post_id)
+        save_json(SKIPPED_FILE, data)
+
+def get_skipped_posts():
+    return load_json(SKIPPED_FILE, {"posts": []})["posts"]
 
 # ─── Опубликованные ───
 
@@ -170,7 +189,7 @@ def delete_user_post(user_id, post_id):
             return True
     return False
 
-# ─── Время публикации пользователей ───
+# ─── Время публикации ───
 
 def get_last_publish_time():
     return load_json(LAST_PUB_FILE, {"time": 0}).get("time", 0)
@@ -205,8 +224,6 @@ def build_attachments(post):
             if ak: s += f"_{ak}"
             att.append(s)
     return ",".join(att) if att else None
-
-# ─── ID группы ───
 
 def resolve_group_id(vk, identifier):
     identifier = identifier.strip().rstrip('/')
