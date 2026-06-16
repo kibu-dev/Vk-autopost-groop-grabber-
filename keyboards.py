@@ -62,7 +62,6 @@ def get_moderation_keyboard(post_id):
     k.add_button(f"✅ Опубл {post_id}", VkKeyboardColor.POSITIVE)
     k.add_line()
     k.add_button(f"❌ Удалить {post_id}", VkKeyboardColor.NEGATIVE)
-    k.add_button(f"⏭ Пропустить {post_id}", VkKeyboardColor.SECONDARY)
     return k
 
 def get_pending_grab_keyboard(index):
@@ -70,7 +69,6 @@ def get_pending_grab_keyboard(index):
     k.add_button(f"✅ Граббер {index}", VkKeyboardColor.POSITIVE)
     k.add_line()
     k.add_button(f"❌ Граббер {index}", VkKeyboardColor.NEGATIVE)
-    k.add_button(f"⏭ Граббер {index}", VkKeyboardColor.SECONDARY)
     return k
 
 def get_scheduled_keyboard():
