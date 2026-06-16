@@ -120,23 +120,20 @@ def run_messenger():
                 send_message(vk, user_id, "Меню:", get_main_keyboard())
 
             elif t == "📢 модерация":
-                # Пользовательские подозрительные
                 posts = get_moderation_posts()
-                if posts:
-                    send_message(vk, user_id, "👤 Подозрительные от пользователей:", get_admin_main_keyboard())
-                    for p in posts[:5]:
-                        send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}",
-                                     get_moderation_keyboard(p['post_id']))
-                
-                # Граббер подозрительные
                 pending = get_pending_grabs()
-                if pending:
-                    send_message(vk, user_id, "🎣 Подозрительные от граббера:", get_admin_main_keyboard())
-                    for i, p in enumerate(pending[:5]):
-                        msg = f"🚨 Граббер #{i+1} ({p['reason']})\nИз группы: {p['from_group']}\n\n{p['post']['text'][:300]}"
-                        send_message(vk, user_id, msg, get_pending_grab_keyboard(i))
-                
-                if not posts and not pending:
+                if posts or pending:
+                    if posts:
+                        send_message(vk, user_id, "👤 От пользователей:", get_admin_main_keyboard())
+                        for p in posts[:5]:
+                            send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}",
+                                         get_moderation_keyboard(p['post_id']))
+                    if pending:
+                        send_message(vk, user_id, "🎣 От граббера:", get_admin_main_keyboard())
+                        for i, p in enumerate(pending[:5]):
+                            msg = f"🚨 #{i+1} ({p['reason']})\nИз группы: {p['from_group']}\n\n{p['post']['text'][:300]}"
+                            send_message(vk, user_id, msg, get_pending_grab_keyboard(i))
+                else:
                     send_message(vk, user_id, "✅ Нет подозрительных постов.", get_admin_main_keyboard())
 
             elif t == "📅 очередь постов":
@@ -148,7 +145,7 @@ def run_messenger():
                         msg += f"• {t_str} — {p['text'][:50]}...\n"
                     send_message(vk, user_id, msg, get_scheduled_keyboard())
                 else:
-                    send_message(vk, user_id, "📭 Нет запланированных постов.", get_admin_main_keyboard())
+                    send_message(vk, user_id, "📭 Нет запланированных.", get_admin_main_keyboard())
 
             elif t == "👥 группы-доноры":
                 send_message(vk, user_id, "Группы:", get_donor_groups_keyboard())
@@ -275,22 +272,15 @@ def run_messenger():
             elif t.startswith("⏭ пропустить "):
                 pid = int(t.split()[-1])
                 remove_from_moderation(pid)
-                send_message(vk, user_id, f"⏭ Пост #{pid} пропущен.", get_admin_main_keyboard())
+                send_message(vk, user_id, f"⏭ Пост #{pid} пропущен. Вернётся при следующей проверке.", get_admin_main_keyboard())
 
             elif t.startswith("⏭ граббер "):
                 try:
                     idx = int(t.split()[-1])
+                    remove_pending_grab(idx)
                     send_message(vk, user_id, f"⏭ Пропущен.", get_admin_main_keyboard())
                 except:
                     pass
-
-            elif t.startswith("🗑 расписание "):
-                try:
-                    ts = int(t.split()[-1])
-                    remove_scheduled_post(ts)
-                    send_message(vk, user_id, "✅ Удалено из расписания.", get_admin_main_keyboard())
-                except:
-                    send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
 
         else:
             send_message(vk, user_id, "Нажмите кнопку.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
