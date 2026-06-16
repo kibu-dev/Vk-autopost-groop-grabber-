@@ -6,8 +6,7 @@ from utils import *
 def run_pub_users():
     vk = vk_api.VkApi(token=USER_TOKEN).get_api()
     last_pub = get_last_publish_time()
-    notified_posts = set()
-    print("👤 Публикатор пользователей запущен (каждые 15-30 мин)")
+    print("👤 Публикатор пользователей запущен (каждые 15 мин)")
 
     while True:
         try:
@@ -23,8 +22,8 @@ def run_pub_users():
 
                 if is_spam(text) or contains_any_link(text):
                     reason = "спам-слова" if is_spam(text) else "ссылки"
-                    if pid not in notified_posts:
-                        notified_posts.add(pid)
+                    # Отправляем уведомление только если пост ещё не в модерации
+                    if not any(m["post_id"] == pid for m in get_moderation_posts()):
                         moderate_post(vk, pid, uid, text, build_attachments(post), reason, "suggestion")
                     continue
 
@@ -43,12 +42,8 @@ def run_pub_users():
                 add_published_post(result["post_id"], uid, text)
                 last_pub = time.time()
                 save_last_publish_time(last_pub)
-                notified_posts.discard(pid)
                 print(f"✅ Пользователь: опубликован #{pid}")
                 break
-
-            existing_ids = {p["id"] for p in items}
-            notified_posts = {p for p in notified_posts if p in existing_ids}
 
             time.sleep(CHECK_INTERVAL)
 
