@@ -8,9 +8,9 @@ GROUPS_FILE = "groups.json"
 WORDS_FILE = "forbidden_words.json"
 GRABBED_FILE = "grabbed_posts.json"
 PUBLISHED_FILE = "published_posts.json"
-GRAB_BUFFER_FILE = "grab_buffer.json"
+SCHEDULED_FILE = "scheduled_posts.json"
+PENDING_GRAB_FILE = "pending_grab.json"
 LAST_PUB_FILE = "last_pub.json"
-LAST_GRAB_PUB_FILE = "last_grab_pub.json"
 
 def load_json(filepath, default=None):
     try:
@@ -74,45 +74,74 @@ def count_today_grabs(group_id):
     today = datetime.now().strftime("%Y-%m-%d")
     return sum(1 for p in data["posts"] if p["group_id"] == group_id and p["date"] == today)
 
-# ─── Буфер граббера ───
+# ─── Отложенные посты ───
 
-def add_to_grab_buffer(text, attachments, from_group):
-    data = load_json(GRAB_BUFFER_FILE, {"buffer": []})
-    new_id = 1
-    if data["buffer"]:
-        new_id = max(p["id"] for p in data["buffer"]) + 1
-    data["buffer"].append({
-        "id": new_id,
-        "text": text,
-        "attachments": attachments or "",
+def get_next_free_hour():
+    """Находит ближайший свободный час (:00), не занятый в расписании"""
+    scheduled = load_json(SCHEDULED_FILE, {"posts": []})["posts"]
+    now = datetime.now()
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    if now.minute > 0:
+        hour += timedelta(hours=1)
+    
+    while True:
+        ts = int(hour.timestamp())
+        if not any(p["time"] == ts for p in scheduled):
+            return ts
+        hour += timedelta(hours=1)
+
+def add_scheduled_post(publish_date, text, from_group):
+    data = load_json(SCHEDULED_FILE, {"posts": []})
+    data["posts"].append({
+        "time": publish_date,
+        "text": text[:200],
         "from_group": from_group,
         "added_at": datetime.now().isoformat()
     })
-    save_json(GRAB_BUFFER_FILE, data)
-    return new_id
+    data["posts"].sort(key=lambda x: x["time"])
+    save_json(SCHEDULED_FILE, data)
 
-def get_grab_buffer():
-    data = load_json(GRAB_BUFFER_FILE, {"buffer": []})
-    return data["buffer"]
+def get_scheduled_posts():
+    data = load_json(SCHEDULED_FILE, {"posts": []})
+    # Удаляем уже прошедшие
+    now = int(time.time())
+    data["posts"] = [p for p in data["posts"] if p["time"] > now]
+    save_json(SCHEDULED_FILE, data)
+    return data["posts"]
 
-def get_next_from_buffer():
-    buffer = get_grab_buffer()
-    if buffer:
-        return buffer[0]
-    return None
+def remove_scheduled_post(publish_time):
+    data = load_json(SCHEDULED_FILE, {"posts": []})
+    data["posts"] = [p for p in data["posts"] if p["time"] != publish_time]
+    save_json(SCHEDULED_FILE, data)
 
-def remove_from_buffer(buffer_id):
-    data = load_json(GRAB_BUFFER_FILE, {"buffer": []})
-    data["buffer"] = [p for p in data["buffer"] if p["id"] != buffer_id]
-    save_json(GRAB_BUFFER_FILE, data)
+# ─── Подозрительные посты граббера (ждут решения) ───
 
-def clear_buffer():
-    save_json(GRAB_BUFFER_FILE, {"buffer": []})
+def add_pending_grab(post, from_group, reason):
+    data = load_json(PENDING_GRAB_FILE, {"posts": []})
+    data["posts"].append({
+        "post": {
+            "id": post["id"],
+            "text": post.get("text", ""),
+            "attachments": build_attachments(post)
+        },
+        "from_group": from_group,
+        "reason": reason,
+        "added_at": datetime.now().isoformat()
+    })
+    save_json(PENDING_GRAB_FILE, data)
 
-def buffer_count():
-    return len(get_grab_buffer())
+def get_pending_grabs():
+    return load_json(PENDING_GRAB_FILE, {"posts": []})["posts"]
 
-# ─── Опубликованные посты ───
+def remove_pending_grab(index):
+    data = load_json(PENDING_GRAB_FILE, {"posts": []})
+    if 0 <= index < len(data["posts"]):
+        data["posts"].pop(index)
+        save_json(PENDING_GRAB_FILE, data)
+        return True
+    return False
+
+# ─── Опубликованные ───
 
 def add_published_post(post_id, user_id, text):
     data = load_json(PUBLISHED_FILE, {"posts": []})
@@ -141,19 +170,13 @@ def delete_user_post(user_id, post_id):
             return True
     return False
 
-# ─── Время публикаций ───
+# ─── Время публикации пользователей ───
 
 def get_last_publish_time():
     return load_json(LAST_PUB_FILE, {"time": 0}).get("time", 0)
 
 def save_last_publish_time(t):
     save_json(LAST_PUB_FILE, {"time": t})
-
-def get_last_grab_publish_time():
-    return load_json(LAST_GRAB_PUB_FILE, {"time": 0}).get("time", 0)
-
-def save_last_grab_publish_time(t):
-    save_json(LAST_GRAB_PUB_FILE, {"time": t})
 
 # ─── Проверки ───
 
@@ -171,8 +194,6 @@ def contains_any_link(text):
 
 def contains_anonymous(text):
     return any(kw in text.lower() for kw in ["анон", "анонимно", "аноним", "#анон", "#анонимно", "#аноним"])
-
-# ─── Вложения ───
 
 def build_attachments(post):
     att = []
@@ -196,8 +217,6 @@ def resolve_group_id(vk, identifier):
     if identifier.isdigit(): return int(identifier)
     try: return vk.groups.getById(group_id=identifier)[0]["id"]
     except: return None
-
-# ─── API ───
 
 def get_user_name(vk, user_id):
     try:
@@ -235,10 +254,10 @@ def remove_from_moderation(post_id):
 def get_stats():
     return {
         "donor_count": len(get_donor_groups()),
-        "pending_moderation": len(moderation_queue),
+        "pending_moderation": len(moderation_queue) + len(get_pending_grabs()),
         "total_published": len(load_json(PUBLISHED_FILE, {"posts": []})["posts"]),
         "total_grabbed": len(load_json(GRABBED_FILE, {"posts": []})["posts"]),
-        "buffer_count": buffer_count(),
+        "scheduled_count": len(get_scheduled_posts()),
     }
 
 def moderate_post(vk_user, post_id, uid, text, attachments_str, reason, post_type="suggestion"):
