@@ -32,6 +32,8 @@ def run_grabber():
                 for group_id in donors:
                     try:
                         posts = vk.wall.get(owner_id=-group_id, count=5, filter="owner")
+                        # Сортируем от старых к новым
+                        posts["items"].sort(key=lambda x: x["id"])
 
                         for post in posts.get("items", []):
                             pid = post["id"]
