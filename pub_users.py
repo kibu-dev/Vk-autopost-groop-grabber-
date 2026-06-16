@@ -22,9 +22,9 @@ def run_pub_users():
 
                 if is_spam(text) or contains_any_link(text):
                     reason = "спам-слова" if is_spam(text) else "ссылки"
-                    # Отправляем уведомление только если пост ещё не в модерации
                     if not any(m["post_id"] == pid for m in get_moderation_posts()):
-                        moderate_post(vk, pid, uid, text, build_attachments(post), reason, "suggestion")
+                        if not is_post_skipped(pid):
+                            moderate_post(vk, pid, uid, text, build_attachments(post), reason, "suggestion")
                     continue
 
                 if now - last_pub < PUBLISH_INTERVAL:
