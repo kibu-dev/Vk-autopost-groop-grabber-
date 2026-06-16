@@ -30,7 +30,7 @@ def get_cancel_keyboard():
 def get_admin_main_keyboard():
     k = VkKeyboard(one_time=False)
     k.add_button("📢 Модерация", VkKeyboardColor.PRIMARY)
-    k.add_button("📦 Буфер граббера", VkKeyboardColor.PRIMARY)
+    k.add_button("📅 Очередь постов", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("👥 Группы-доноры", VkKeyboardColor.PRIMARY)
     k.add_button("🚫 Запрет-слова", VkKeyboardColor.NEGATIVE)
@@ -65,9 +65,17 @@ def get_moderation_keyboard(post_id):
     k.add_button(f"⏭ Пропустить {post_id}", VkKeyboardColor.SECONDARY)
     return k
 
-def get_buffer_keyboard(buffer_id):
+def get_pending_grab_keyboard(index):
     k = VkKeyboard(one_time=True)
-    k.add_button(f"🗑 Буфер {buffer_id}", VkKeyboardColor.NEGATIVE)
+    k.add_button(f"✅ Граббер {index}", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button(f"❌ Граббер {index}", VkKeyboardColor.NEGATIVE)
+    k.add_button(f"⏭ Граббер {index}", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_scheduled_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
 
 def get_back_admin_keyboard():
