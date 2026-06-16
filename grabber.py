@@ -6,17 +6,32 @@ from utils import *
 
 def run_grabber():
     vk = vk_api.VkApi(token=USER_TOKEN).get_api()
-    print("🎣 Граббер запущен (каждые 15 мин, без лимитов)")
+    print("🎣 Граббер запущен (каждые 15 мин)")
+
+    # Первый запуск — запоминаем последний пост, не берём
+    donors = get_donor_groups()
+    if donors:
+        print("🔍 Первый запуск — запоминаю последние посты...")
+        for group_id in donors:
+            try:
+                posts = vk.wall.get(owner_id=-group_id, count=1, filter="owner")
+                if posts["items"]:
+                    last_pid = posts["items"][0]["id"]
+                    if not is_post_grabbed(group_id, last_pid):
+                        add_grabbed_post(group_id, last_pid)
+                        print(f"  📌 Группа {group_id}: запомнен пост {last_pid}")
+            except Exception as e:
+                print(f"  ❌ Группа {group_id}: {e}")
 
     while True:
         try:
             donors = get_donor_groups()
             if donors:
-                print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Сканирую {len(donors)} групп...")
+                print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Сканирую...")
 
                 for group_id in donors:
                     try:
-                        posts = vk.wall.get(owner_id=-group_id, count=10, filter="owner")
+                        posts = vk.wall.get(owner_id=-group_id, count=5, filter="owner")
 
                         for post in posts.get("items", []):
                             pid = post["id"]
@@ -27,15 +42,13 @@ def run_grabber():
 
                             add_grabbed_post(group_id, pid)
 
-                            # Подозрительный → на модерацию
                             if contains_any_link(text) or is_spam(text):
                                 reason = "ссылки" if contains_any_link(text) else "спам-слова"
                                 add_pending_grab(post, group_id, reason)
                                 moderate_post(vk, pid, -group_id, text, build_attachments(post), f"{reason} (граббер)", "grab")
-                                print(f"  ⚠️ Пост {pid} → модерация ({reason})")
+                                print(f"  ⚠️ Пост {pid} → модерация")
                                 continue
 
-                            # Чистый → планируем
                             att = build_attachments(post)
                             pub_time = get_next_free_hour()
                             vk.wall.post(
@@ -48,13 +61,10 @@ def run_grabber():
                             add_scheduled_post(pub_time, text[:200], group_id)
                             print(f"  📅 Пост {pid} запланирован на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
 
-                            time.sleep(2)
+                            time.sleep(1)
 
                     except Exception as e:
                         print(f"  ❌ Группа {group_id}: {e}")
-
-            else:
-                print("📭 Нет групп-доноров")
 
             time.sleep(900)
 
