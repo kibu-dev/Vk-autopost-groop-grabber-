@@ -36,6 +36,11 @@ def get_admin_main_keyboard():
     k.add_button("🚫 Запрет-слова", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("📊 Статистика", VkKeyboardColor.SECONDARY)
+    k.add_button("❤️ Автолайкер", VkKeyboardColor.SECONDARY)
+    k.add_line()
+    k.add_button("🟢 Онлайн", VkKeyboardColor.SECONDARY)
+    k.add_button("🤝 Друзья", VkKeyboardColor.SECONDARY)
+    k.add_line()
     k.add_button("🔙 Пользовательское меню", VkKeyboardColor.SECONDARY)
     return k
 
@@ -95,4 +100,46 @@ def get_remove_donor_keyboard(donors, vk_user=None):
         k.add_button(f"➖ {name}"[:40], VkKeyboardColor.NEGATIVE)
         if i % 2 == 0 and i != len(donors[:10]): k.add_line()
     k.add_line(); k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_liker_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("▶️ Включить лайкер", VkKeyboardColor.POSITIVE)
+    k.add_button("⏸️ Выключить лайкер", VkKeyboardColor.NEGATIVE)
+    k.add_line()
+    k.add_button("📋 Лайк группы", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("➕ Лайк группу", VkKeyboardColor.POSITIVE)
+    k.add_button("➖ Лайк группу", VkKeyboardColor.NEGATIVE)
+    k.add_line()
+    k.add_button("📊 Лайк стата", VkKeyboardColor.SECONDARY)
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_remove_liker_keyboard(groups, vk_user=None):
+    k = VkKeyboard(one_time=True)
+    for i, g in enumerate(groups[:10], 1):
+        try:
+            from utils import get_group_name
+            name = get_group_name(vk_user, g) if vk_user else str(g)
+        except: name = str(g)
+        k.add_button(f"❤➖ {name}"[:40], VkKeyboardColor.NEGATIVE)
+        if i % 2 == 0 and i != len(groups[:10]): k.add_line()
+    k.add_line(); k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_online_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("▶️ Включить онлайн", VkKeyboardColor.POSITIVE)
+    k.add_button("⏸️ Выключить онлайн", VkKeyboardColor.NEGATIVE)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_friend_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("▶️ Включить друзей", VkKeyboardColor.POSITIVE)
+    k.add_button("⏸️ Выключить друзей", VkKeyboardColor.NEGATIVE)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
