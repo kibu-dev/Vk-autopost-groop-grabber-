@@ -52,6 +52,13 @@ def run_messenger():
                     send_message(vk, user_id, "✅ Удалено!", get_forbidden_words_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не найдено.", get_forbidden_words_keyboard())
+            elif mode == "add_liker":
+                gid = resolve_group_id(vk_user, text.strip())
+                if gid:
+                    add_liker_group(gid)
+                    send_message(vk, user_id, f"✅ [{get_group_name(vk_user, gid)}] добавлена!", get_liker_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Не найдена.", get_back_admin_keyboard())
             admin_state.pop(user_id, None)
             continue
 
@@ -125,17 +132,17 @@ def run_messenger():
 
                 if posts or pending:
                     if posts:
-                        send_message(vk, user_id, f"👤 Подозрительные от пользователей ({len(posts)}):", get_admin_main_keyboard())
+                        send_message(vk, user_id, f"👤 Подозрительные ({len(posts)}):", get_admin_main_keyboard())
                         for p in posts[:10]:
                             send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}",
                                          get_moderation_keyboard(p['post_id']))
                     if pending:
-                        send_message(vk, user_id, f"🎣 Подозрительные от граббера ({len(pending)}):", get_admin_main_keyboard())
+                        send_message(vk, user_id, f"🎣 Граббер ({len(pending)}):", get_admin_main_keyboard())
                         for i, p in enumerate(pending[:10]):
                             msg = f"🚨 #{i+1} ({p['reason']})\nИз группы: {p['from_group']}\n\n{p['post']['text'][:300]}"
                             send_message(vk, user_id, msg, get_pending_grab_keyboard(i))
                 else:
-                    send_message(vk, user_id, "✅ Нет подозрительных постов.", get_admin_main_keyboard())
+                    send_message(vk, user_id, "✅ Пусто.", get_admin_main_keyboard())
 
             elif t == "📅 очередь постов":
                 scheduled = get_scheduled_posts()
@@ -169,10 +176,8 @@ def run_messenger():
                 if donors:
                     lines = []
                     for g in donors:
-                        try:
-                            lines.append(f"• {g} — {get_group_name(vk_user, g)}")
-                        except:
-                            lines.append(f"• {g}")
+                        try: lines.append(f"• {g} — {get_group_name(vk_user, g)}")
+                        except: lines.append(f"• {g}")
                     send_message(vk, user_id, "\n".join(lines), get_donor_groups_keyboard())
                 else:
                     send_message(vk, user_id, "📭 Пусто.", get_donor_groups_keyboard())
@@ -191,10 +196,8 @@ def run_messenger():
             elif t.startswith("➖ "):
                 donors = get_donor_groups()
                 for g in donors:
-                    try:
-                        name = get_group_name(vk_user, g)
-                    except:
-                        name = str(g)
+                    try: name = get_group_name(vk_user, g)
+                    except: name = str(g)
                     if t == f"➖ {name}".lower()[:40]:
                         remove_donor_group(g)
                         send_message(vk, user_id, f"✅ [{name}] удалена!", get_donor_groups_keyboard())
@@ -240,13 +243,8 @@ def run_messenger():
                     if 0 <= idx < len(pending):
                         p = pending[idx]
                         pub_time = get_next_free_hour()
-                        vk_user.wall.post(
-                            owner_id=-GROUP_ID,
-                            message=p["post"]["text"],
-                            attachments=p["post"]["attachments"],
-                            from_group=1,
-                            publish_date=pub_time
-                        )
+                        vk_user.wall.post(owner_id=-GROUP_ID, message=p["post"]["text"],
+                                         attachments=p["post"]["attachments"], from_group=1, publish_date=pub_time)
                         add_scheduled_post(pub_time, p["post"]["text"][:200], p["from_group"])
                         remove_pending_grab(idx)
                         send_message(vk, user_id, f"✅ Запланирован на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!", get_admin_main_keyboard())
@@ -255,10 +253,8 @@ def run_messenger():
 
             elif t.startswith("❌ удалить "):
                 pid = int(t.split()[-1])
-                try:
-                    vk_user.wall.delete(owner_id=-GROUP_ID, post_id=pid)
-                except:
-                    pass
+                try: vk_user.wall.delete(owner_id=-GROUP_ID, post_id=pid)
+                except: pass
                 remove_from_moderation(pid)
                 send_message(vk, user_id, "❌ Удалён.", get_admin_main_keyboard())
 
@@ -269,6 +265,83 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Удалён.", get_admin_main_keyboard())
                 except:
                     send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
+
+            # ─── АВТОЛАЙКЕР ───
+            elif t == "❤️ автолайкер":
+                status = "Включен ✅" if is_liker_enabled() else "Выключен ❌"
+                send_message(vk, user_id, f"❤️ Автолайкер: {status}", get_liker_keyboard())
+
+            elif t == "▶️ включить лайкер":
+                set_liker_enabled(True)
+                send_message(vk, user_id, "❤️ Включен!", get_liker_keyboard())
+
+            elif t == "⏸️ выключить лайкер":
+                set_liker_enabled(False)
+                send_message(vk, user_id, "❤️ Выключен.", get_liker_keyboard())
+
+            elif t == "📋 лайк группы":
+                groups = get_liker_groups()
+                if groups:
+                    lines = []
+                    for g in groups:
+                        try: lines.append(f"• {g} — {get_group_name(vk_user, g)}")
+                        except: lines.append(f"• {g}")
+                    send_message(vk, user_id, "\n".join(lines), get_liker_keyboard())
+                else:
+                    send_message(vk, user_id, "📭 Пусто.", get_liker_keyboard())
+
+            elif t == "➕ лайк группу":
+                admin_state[user_id] = {"mode": "add_liker"}
+                send_message(vk, user_id, "Введите ID группы:", get_back_admin_keyboard())
+
+            elif t == "➖ лайк группу":
+                groups = get_liker_groups()
+                if groups:
+                    send_message(vk, user_id, "Выберите:", get_remove_liker_keyboard(groups, vk_user))
+                else:
+                    send_message(vk, user_id, "📭 Пусто.", get_liker_keyboard())
+
+            elif t.startswith("❤➖ "):
+                groups = get_liker_groups()
+                for g in groups:
+                    try: name = get_group_name(vk_user, g)
+                    except: name = str(g)
+                    if t == f"❤➖ {name}".lower()[:40]:
+                        remove_liker_group(g)
+                        send_message(vk, user_id, f"✅ [{name}] удалена!", get_liker_keyboard())
+                        break
+
+            elif t == "📊 лайк стата":
+                s = get_liker_stats()
+                msg = f"❤️ Статистика:\n• Сегодня: {s['today']}/20\n• Всего: {s['total']}"
+                send_message(vk, user_id, msg, get_liker_keyboard())
+
+            # ─── ОНЛАЙН ───
+            elif t == "🟢 онлайн":
+                status = "Включен ✅" if is_online_enabled() else "Выключен ❌"
+                send_message(vk, user_id, f"🟢 Онлайн: {status}", get_online_keyboard())
+
+            elif t == "▶️ включить онлайн":
+                set_online_enabled(True)
+                send_message(vk, user_id, "🟢 Включен!", get_online_keyboard())
+
+            elif t == "⏸️ выключить онлайн":
+                set_online_enabled(False)
+                send_message(vk, user_id, "🟢 Выключен.", get_online_keyboard())
+
+            # ─── ДРУЗЬЯ ───
+            elif t == "🤝 друзья":
+                status = "Включен ✅" if is_friend_enabled() else "Выключен ❌"
+                s = get_friend_stats()
+                send_message(vk, user_id, f"🤝 Друзья: {status}\nПринято: {s['accepted']}", get_friend_keyboard())
+
+            elif t == "▶️ включить друзей":
+                set_friend_enabled(True)
+                send_message(vk, user_id, "🤝 Включено!", get_friend_keyboard())
+
+            elif t == "⏸️ выключить друзей":
+                set_friend_enabled(False)
+                send_message(vk, user_id, "🤝 Выключено.", get_friend_keyboard())
 
         else:
             send_message(vk, user_id, "Нажмите кнопку.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
