@@ -12,6 +12,12 @@ SCHEDULED_FILE = "scheduled_posts.json"
 PENDING_GRAB_FILE = "pending_grab.json"
 LAST_PUB_FILE = "last_pub.json"
 SKIPPED_FILE = "skipped_posts.json"
+LIKER_GROUPS_FILE = "liker_groups.json"
+LIKER_STATE_FILE = "liker_state.json"
+LIKER_STATS_FILE = "liker_stats.json"
+ONLINE_STATE_FILE = "online_state.json"
+FRIEND_STATE_FILE = "friend_state.json"
+FRIEND_STATS_FILE = "friend_stats.json"
 
 def load_json(filepath, default=None):
     try:
@@ -139,7 +145,7 @@ def remove_pending_grab(index):
         return True
     return False
 
-# ─── Пропущенные посты ───
+# ─── Пропущенные ───
 
 def is_post_skipped(post_id):
     data = load_json(SKIPPED_FILE, {"posts": []})
@@ -196,6 +202,66 @@ def get_last_publish_time():
 
 def save_last_publish_time(t):
     save_json(LAST_PUB_FILE, {"time": t})
+
+# ─── Автолайкер ───
+
+def get_liker_groups():
+    return load_json(LIKER_GROUPS_FILE, {"groups": []}).get("groups", [])
+
+def add_liker_group(group_id):
+    data = load_json(LIKER_GROUPS_FILE, {"groups": []})
+    if group_id not in data["groups"]:
+        data["groups"].append(group_id)
+        save_json(LIKER_GROUPS_FILE, data)
+
+def remove_liker_group(group_id):
+    data = load_json(LIKER_GROUPS_FILE, {"groups": []})
+    if group_id in data["groups"]:
+        data["groups"].remove(group_id)
+        save_json(LIKER_GROUPS_FILE, data)
+
+def is_liker_enabled():
+    return load_json(LIKER_STATE_FILE, {"enabled": False}).get("enabled", False)
+
+def set_liker_enabled(enabled):
+    save_json(LIKER_STATE_FILE, {"enabled": enabled})
+
+def get_liker_stats():
+    return load_json(LIKER_STATS_FILE, {"today": 0, "total": 0, "date": ""})
+
+def add_liker_stat():
+    data = get_liker_stats()
+    today = datetime.now().strftime("%Y-%m-%d")
+    if data["date"] != today:
+        data["today"] = 0
+        data["date"] = today
+    data["today"] += 1
+    data["total"] += 1
+    save_json(LIKER_STATS_FILE, data)
+
+# ─── Онлайн ───
+
+def is_online_enabled():
+    return load_json(ONLINE_STATE_FILE, {"enabled": False}).get("enabled", False)
+
+def set_online_enabled(enabled):
+    save_json(ONLINE_STATE_FILE, {"enabled": enabled})
+
+# ─── Друзья ───
+
+def is_friend_enabled():
+    return load_json(FRIEND_STATE_FILE, {"enabled": False}).get("enabled", False)
+
+def set_friend_enabled(enabled):
+    save_json(FRIEND_STATE_FILE, {"enabled": enabled})
+
+def get_friend_stats():
+    return load_json(FRIEND_STATS_FILE, {"accepted": 0})
+
+def add_friend_stat():
+    data = get_friend_stats()
+    data["accepted"] += 1
+    save_json(FRIEND_STATS_FILE, data)
 
 # ─── Проверки ───
 
