@@ -129,7 +129,6 @@ def run_messenger():
             elif t == "📢 модерация":
                 posts = get_moderation_posts()
                 pending = get_pending_grabs()
-
                 if posts or pending:
                     if posts:
                         send_message(vk, user_id, f"👤 Подозрительные ({len(posts)}):", get_admin_main_keyboard())
@@ -266,7 +265,10 @@ def run_messenger():
                 except:
                     send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
 
-            # ─── АВТОЛАЙКЕР ───
+            # ─── АВТОМАТИЗАЦИЯ ───
+            elif t == "⚙️ автоматизация":
+                send_message(vk, user_id, "⚙️ Автоматизация:", get_automation_keyboard())
+
             elif t == "❤️ автолайкер":
                 status = "Включен ✅" if is_liker_enabled() else "Выключен ❌"
                 send_message(vk, user_id, f"❤️ Автолайкер: {status}", get_liker_keyboard())
@@ -316,8 +318,7 @@ def run_messenger():
                 msg = f"❤️ Статистика:\n• Сегодня: {s['today']}/20\n• Всего: {s['total']}"
                 send_message(vk, user_id, msg, get_liker_keyboard())
 
-            # ─── ОНЛАЙН ───
-            elif t == "🟢 онлайн":
+            elif t == "🟢 вечный онлайн":
                 status = "Включен ✅" if is_online_enabled() else "Выключен ❌"
                 send_message(vk, user_id, f"🟢 Онлайн: {status}", get_online_keyboard())
 
@@ -329,8 +330,7 @@ def run_messenger():
                 set_online_enabled(False)
                 send_message(vk, user_id, "🟢 Выключен.", get_online_keyboard())
 
-            # ─── ДРУЗЬЯ ───
-            elif t == "🤝 друзья":
+            elif t == "🤝 приём друзей":
                 status = "Включен ✅" if is_friend_enabled() else "Выключен ❌"
                 s = get_friend_stats()
                 send_message(vk, user_id, f"🤝 Друзья: {status}\nПринято: {s['accepted']}", get_friend_keyboard())
@@ -342,6 +342,19 @@ def run_messenger():
             elif t == "⏸️ выключить друзей":
                 set_friend_enabled(False)
                 send_message(vk, user_id, "🤝 Выключено.", get_friend_keyboard())
+
+            elif t == "👥 приём в группу":
+                status = "Включен ✅" if is_group_accept_enabled() else "Выключен ❌"
+                s = get_group_accept_stats()
+                send_message(vk, user_id, f"👥 Приём в группу: {status}\nПринято: {s['accepted']}", get_group_accept_keyboard())
+
+            elif t == "▶️ включить группу":
+                set_group_accept_enabled(True)
+                send_message(vk, user_id, "👥 Автоприём в группу включен!", get_group_accept_keyboard())
+
+            elif t == "⏸️ выключить группу":
+                set_group_accept_enabled(False)
+                send_message(vk, user_id, "👥 Автоприём в группу выключен.", get_group_accept_keyboard())
 
         else:
             send_message(vk, user_id, "Нажмите кнопку.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
