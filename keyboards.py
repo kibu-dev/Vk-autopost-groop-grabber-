@@ -36,10 +36,7 @@ def get_admin_main_keyboard():
     k.add_button("🚫 Запрет-слова", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("📊 Статистика", VkKeyboardColor.SECONDARY)
-    k.add_button("❤️ Автолайкер", VkKeyboardColor.SECONDARY)
-    k.add_line()
-    k.add_button("🟢 Онлайн", VkKeyboardColor.SECONDARY)
-    k.add_button("🤝 Друзья", VkKeyboardColor.SECONDARY)
+    k.add_button("⚙️ Автоматизация", VkKeyboardColor.SECONDARY)
     k.add_line()
     k.add_button("🔙 Пользовательское меню", VkKeyboardColor.SECONDARY)
     return k
@@ -102,6 +99,17 @@ def get_remove_donor_keyboard(donors, vk_user=None):
     k.add_line(); k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
 
+def get_automation_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("❤️ Автолайкер", VkKeyboardColor.PRIMARY)
+    k.add_button("🟢 Вечный онлайн", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("🤝 Приём друзей", VkKeyboardColor.PRIMARY)
+    k.add_button("👥 Приём в группу", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
 def get_liker_keyboard():
     k = VkKeyboard(one_time=False)
     k.add_button("▶️ Включить лайкер", VkKeyboardColor.POSITIVE)
@@ -140,6 +148,14 @@ def get_friend_keyboard():
     k = VkKeyboard(one_time=False)
     k.add_button("▶️ Включить друзей", VkKeyboardColor.POSITIVE)
     k.add_button("⏸️ Выключить друзей", VkKeyboardColor.NEGATIVE)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_group_accept_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("▶️ Включить группу", VkKeyboardColor.POSITIVE)
+    k.add_button("⏸️ Выключить группу", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
