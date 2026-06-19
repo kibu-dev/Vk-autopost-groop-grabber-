@@ -15,9 +15,12 @@ SKIPPED_FILE = "skipped_posts.json"
 LIKER_GROUPS_FILE = "liker_groups.json"
 LIKER_STATE_FILE = "liker_state.json"
 LIKER_STATS_FILE = "liker_stats.json"
+LIKED_FILE = "liked_posts.json"
 ONLINE_STATE_FILE = "online_state.json"
 FRIEND_STATE_FILE = "friend_state.json"
 FRIEND_STATS_FILE = "friend_stats.json"
+GROUP_ACCEPT_STATE_FILE = "group_accept_state.json"
+GROUP_ACCEPT_STATS_FILE = "group_accept_stats.json"
 
 def load_json(filepath, default=None):
     try:
@@ -239,6 +242,14 @@ def add_liker_stat():
     data["total"] += 1
     save_json(LIKER_STATS_FILE, data)
 
+def get_liked_posts():
+    return load_json(LIKED_FILE, {})
+
+def save_liked_post(group_id, post_id):
+    data = get_liked_posts()
+    data[str(group_id)] = post_id
+    save_json(LIKED_FILE, data)
+
 # ─── Онлайн ───
 
 def is_online_enabled():
@@ -262,6 +273,22 @@ def add_friend_stat():
     data = get_friend_stats()
     data["accepted"] += 1
     save_json(FRIEND_STATS_FILE, data)
+
+# ─── Приём в группу ───
+
+def is_group_accept_enabled():
+    return load_json(GROUP_ACCEPT_STATE_FILE, {"enabled": False}).get("enabled", False)
+
+def set_group_accept_enabled(enabled):
+    save_json(GROUP_ACCEPT_STATE_FILE, {"enabled": enabled})
+
+def get_group_accept_stats():
+    return load_json(GROUP_ACCEPT_STATS_FILE, {"accepted": 0})
+
+def add_group_accept_stat():
+    data = get_group_accept_stats()
+    data["accepted"] += 1
+    save_json(GROUP_ACCEPT_STATS_FILE, data)
 
 # ─── Проверки ───
 
