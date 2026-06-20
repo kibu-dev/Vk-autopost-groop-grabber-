@@ -32,13 +32,14 @@ def run_messenger():
             mode = state.get("mode")
             t = text.lower()
 
+            # ─── AI: приём текста ───
             if mode == "ai_post":
                 if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
 
-                admin_state[user_id] = {"mode": "ai_choose", "text": text, "variants": [], "chosen": ""}
+                admin_state[user_id] = {"mode": "ai_choose", "text": text, "variants": [], "chosen": "", "attachments": []}
                 send_message(vk, user_id, "⏳ Генерирую варианты...")
                 result = generate_variants(text)
                 if result:
@@ -57,14 +58,14 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                 continue
 
+            # ─── AI: выбор варианта ───
             if mode == "ai_choose":
                 if t in ["✅ выбрать 1", "✅ выбрать 2", "✅ выбрать 3"]:
                     idx = int(t.split()[-1]) - 1
                     if idx < len(state.get("variants", [])):
-                        chosen = state["variants"][idx]
-                        state["chosen"] = chosen
+                        state["chosen"] = state["variants"][idx]
                         state["mode"] = "ai_attach"
-                        send_message(vk, user_id, f"📎 Добавить фото/видео к посту?\n\nТекст: {chosen[:200]}...", get_attach_keyboard())
+                        send_message(vk, user_id, f"📎 Добавить фото/видео к посту?\n\n{state['chosen'][:200]}...", get_attach_keyboard())
                     else:
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, "❌ Ошибка выбора.", get_admin_main_keyboard())
@@ -90,12 +91,13 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                 continue
 
+            # ─── AI: прикрепление фото ───
             if mode == "ai_attach":
                 if t == "✅ нет, опубликовать":
                     r = vk_user.wall.post(owner_id=-GROUP_ID, message=state["chosen"], attachments=None, from_group=1)
                     add_published_post(r["post_id"], ADMIN_ID, state["chosen"])
                     admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "✅ Опубликовано без фото!", get_admin_main_keyboard())
+                    send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
                 elif t == "📷 да, прикрепить":
                     state["mode"] = "ai_attach_wait"
                     send_message(vk, user_id, "📷 Пришлите фото или видео:", get_cancel_keyboard())
@@ -104,6 +106,7 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                 continue
 
+            # ─── AI: получение фото ───
             if mode == "ai_attach_wait":
                 if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
@@ -111,8 +114,7 @@ def run_messenger():
                     continue
 
                 attachments = []
-                
-                # Способ 1: event.attachments
+
                 if hasattr(event, 'attachments') and event.attachments:
                     for att in event.attachments:
                         att_type = att.get("type")
@@ -125,8 +127,7 @@ def run_messenger():
                             if ak:
                                 att_str += f"_{ak}"
                             attachments.append(att_str)
-                
-                # Способ 2: через API
+
                 if not attachments:
                     try:
                         msg = vk_user.messages.getById(message_ids=event.message_id)
@@ -146,13 +147,18 @@ def run_messenger():
                     except Exception as e:
                         print(f"Ошибка получения вложений: {e}")
 
+                if not attachments:
+                    send_message(vk, user_id, "❌ Не вижу фото. Попробуйте ещё раз или Отмена.", get_cancel_keyboard())
+                    continue
+
                 att_str = ",".join(attachments) if attachments else None
                 r = vk_user.wall.post(owner_id=-GROUP_ID, message=state["chosen"], attachments=att_str, from_group=1)
                 add_published_post(r["post_id"], ADMIN_ID, state["chosen"])
                 admin_state.pop(user_id, None)
-                send_message(vk, user_id, "✅ Опубликовано!" + (" 📎" if attachments else ""), get_admin_main_keyboard())
+                send_message(vk, user_id, "✅ Опубликовано с фото!", get_admin_main_keyboard())
                 continue
 
+            # ─── AI: свой текст ───
             if mode == "ai_custom":
                 if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
@@ -161,9 +167,10 @@ def run_messenger():
 
                 state["chosen"] = text
                 state["mode"] = "ai_attach"
-                send_message(vk, user_id, f"📎 Добавить фото/видео к посту?\n\nТекст: {text[:200]}...", get_attach_keyboard())
+                send_message(vk, user_id, f"📎 Добавить фото/видео к посту?\n\n{text[:200]}...", get_attach_keyboard())
                 continue
 
+            # ─── Остальные состояния ───
             if t in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
                 send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
