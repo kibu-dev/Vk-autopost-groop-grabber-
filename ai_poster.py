@@ -1,5 +1,6 @@
 import requests
 import json
+import re
 from datetime import datetime
 from config import OPENROUTER_API_KEY
 
@@ -7,7 +8,6 @@ PROMPT_FILE = "prompt.txt"
 LOG_FILE = "ai_log.json"
 
 def ai_log(message):
-    """Пишет лог в JSON файл"""
     try:
         try:
             with open(LOG_FILE, "r", encoding="utf-8") as f:
@@ -20,7 +20,6 @@ def ai_log(message):
             "message": str(message)
         })
         
-        # Оставляем последние 100 записей
         logs = logs[-100:]
         
         with open(LOG_FILE, "w", encoding="utf-8") as f:
@@ -37,11 +36,11 @@ def load_prompt():
 
 def generate_variants(text):
     if not OPENROUTER_API_KEY:
-        ai_log("❌ Нет API ключа")
+        ai_log("Нет API ключа")
         return None
     
     prompt = load_prompt().replace("{text}", text)
-    ai_log(f"📤 Запрос: {text[:100]}")
+    ai_log(f"Запрос: {text[:100]}")
     
     try:
         response = requests.post(
@@ -54,30 +53,39 @@ def generate_variants(text):
                 "model": "google/gemini-2.5-flash-lite",
                 "messages": [{"role": "user", "content": prompt}]
             },
-            timeout=30
+            timeout=60
         )
         
-        ai_log(f"📥 Статус: {response.status_code}")
+        ai_log(f"Статус: {response.status_code}")
         
         if response.status_code == 200:
             data = response.json()
             result = data["choices"][0]["message"]["content"]
-            ai_log(f"✅ Ответ получен: {result[:100]}")
+            ai_log(f"Ответ: {result[:200]}")
             return result
         else:
-            ai_log(f"❌ Ошибка {response.status_code}: {response.text[:300]}")
+            ai_log(f"Ошибка {response.status_code}: {response.text[:300]}")
             return None
     except Exception as e:
-        ai_log(f"❌ Исключение: {str(e)}")
+        ai_log(f"Исключение: {str(e)}")
         return None
 
 def parse_variants(result):
+    """Разбивает ответ на варианты"""
     variants = []
-    lines = result.split("\n")
-    for line in lines:
-        line = line.strip()
-        if line.startswith("1.") or line.startswith("2.") or line.startswith("3."):
-            text = line[2:].strip()
-            if text:
-                variants.append(text)
+    
+    # Сохраняем сырой ответ
+    try:
+        with open("last_ai_response.txt", "w", encoding="utf-8") as f:
+            f.write(result)
+    except:
+        pass
+    
+    result = result.strip()
+    
+    # Разбиваем по двойным переносам строк
+    parts = result.split("\n\n")
+    variants = [p.strip() for p in parts if len(p.strip()) > 20]
+    
+    ai_log(f"Найдено вариантов: {len(variants)} (частей: {len(parts)})")
     return variants[:3]
