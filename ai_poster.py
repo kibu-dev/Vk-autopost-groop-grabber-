@@ -72,7 +72,7 @@ def generate_variants(text):
         return None
 
 def parse_variants(result):
-    """Разбивает ответ на варианты"""
+    """Разбивает ответ на варианты и чистит от лишнего"""
     variants = []
     
     try:
@@ -83,13 +83,14 @@ def parse_variants(result):
     
     result = result.strip()
     
-    # Разбиваем по разделителю ---
     if "---" in result:
         parts = result.split("---")
     else:
         parts = result.split("\n\n")
     
     for p in parts:
+        p = p.strip()
+        p = re.sub(r'^Вариант\s*\d+\s*:?\s*', '', p, flags=re.IGNORECASE)
         p = p.strip()
         if len(p) > 20:
             variants.append(p)
