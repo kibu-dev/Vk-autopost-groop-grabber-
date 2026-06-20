@@ -32,7 +32,7 @@ def load_prompt():
         with open(PROMPT_FILE, "r", encoding="utf-8") as f:
             return f.read()
     except:
-        return "Улучши этот текст: {text}"
+        return "Напиши пост на тему: {text}"
 
 def generate_variants(text):
     if not OPENROUTER_API_KEY:
@@ -52,7 +52,7 @@ def generate_variants(text):
             json={
                 "model": "google/gemini-2.5-flash-lite",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1500
+                "max_tokens": 2000
             },
             timeout=60
         )
@@ -72,28 +72,15 @@ def generate_variants(text):
         return None
 
 def parse_variants(result):
-    """Разбивает ответ на варианты и чистит от лишнего"""
-    variants = []
-    
+    """Возвращает весь ответ как один вариант"""
     try:
         with open("last_ai_response.txt", "w", encoding="utf-8") as f:
             f.write(result)
     except:
         pass
     
-    result = result.strip()
-    
-    if "---" in result:
-        parts = result.split("---")
-    else:
-        parts = result.split("\n\n")
-    
-    for p in parts:
-        p = p.strip()
-        p = re.sub(r'^Вариант\s*\d+\s*:?\s*', '', p, flags=re.IGNORECASE)
-        p = p.strip()
-        if len(p) > 20:
-            variants.append(p)
-    
-    ai_log(f"Найдено вариантов: {len(variants)}")
-    return variants[:3]
+    text = result.strip()
+    if text:
+        ai_log(f"Длина ответа: {len(text)} символов")
+        return [text]
+    return []
