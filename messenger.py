@@ -27,11 +27,6 @@ def run_messenger():
         text = event.text.strip() if event.text else ""
         is_admin = (user_id == ADMIN_ID)
 
-        # Логируем всё от админа
-        if is_admin:
-            has_att = bool(event.attachments) if hasattr(event, 'attachments') else "NO_ATTR"
-            ai_log(f"TEXT: '{text[:100] if text else 'ПУСТО'}' | ATTACH: {has_att}")
-
         if is_admin and user_id in admin_state:
             state = admin_state[user_id]
             mode = state.get("mode")
@@ -45,40 +40,23 @@ def run_messenger():
                     continue
 
                 attachments = []
-                if hasattr(event, 'attachments') and event.attachments:
-                    ai_log(f"ATTACH DATA: {event.attachments}")
-                    for att in event.attachments:
-                        att_type = att.get("type")
-                        att_obj = att.get(att_type, {})
-                        oid = att_obj.get("owner_id")
-                        iid = att_obj.get("id")
-                        ak = att_obj.get("access_key", "")
-                        if oid and iid:
-                            att_str = f"{att_type}{oid}_{iid}"
-                            if ak:
-                                att_str += f"_{ak}"
-                            attachments.append(att_str)
-
-                if not attachments:
-                    try:
-                        msg = vk_user.messages.getById(message_ids=event.message_id)
-                        ai_log(f"API MSG: {msg}")
-                        if msg and msg.get("items"):
-                            atts = msg["items"][0].get("attachments", [])
-                            ai_log(f"API ATTS: {atts}")
-                            for att in atts:
-                                att_type = att.get("type")
-                                att_obj = att.get(att_type, {})
-                                oid = att_obj.get("owner_id")
-                                iid = att_obj.get("id")
-                                ak = att_obj.get("access_key", "")
-                                if oid and iid:
-                                    att_str = f"{att_type}{oid}_{iid}"
-                                    if ak:
-                                        att_str += f"_{ak}"
-                                    attachments.append(att_str)
-                    except Exception as e:
-                        ai_log(f"API ERROR: {e}")
+                try:
+                    msg = vk_user.messages.getById(message_ids=event.message_id)
+                    if msg and msg.get("items"):
+                        atts = msg["items"][0].get("attachments", [])
+                        for att in atts:
+                            att_type = att.get("type")
+                            att_obj = att.get(att_type, {})
+                            oid = att_obj.get("owner_id")
+                            iid = att_obj.get("id")
+                            ak = att_obj.get("access_key", "")
+                            if oid and iid:
+                                att_str = f"{att_type}{oid}_{iid}"
+                                if ak:
+                                    att_str += f"_{ak}"
+                                attachments.append(att_str)
+                except Exception as e:
+                    ai_log(f"API ERROR: {e}")
 
                 ai_log(f"FOUND ATTACHMENTS: {len(attachments)}")
 
