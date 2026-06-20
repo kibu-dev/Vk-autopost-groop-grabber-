@@ -173,14 +173,11 @@ def get_ai_keyboard():
 
 def get_variants_keyboard():
     k = VkKeyboard(one_time=True)
-    k.add_button("✅ Выбрать 1", VkKeyboardColor.POSITIVE)
-    k.add_button("✅ Выбрать 2", VkKeyboardColor.POSITIVE)
-    k.add_line()
-    k.add_button("✅ Выбрать 3", VkKeyboardColor.POSITIVE)
+    k.add_button("✅ Опубликовать", VkKeyboardColor.POSITIVE)
     k.add_line()
     k.add_button("✏️ Свой текст", VkKeyboardColor.PRIMARY)
     k.add_line()
-    k.add_button("🔄 Ещё варианты", VkKeyboardColor.SECONDARY)
+    k.add_button("🔄 Ещё вариант", VkKeyboardColor.SECONDARY)
     k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
     return k
 
