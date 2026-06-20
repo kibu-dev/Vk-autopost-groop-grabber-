@@ -32,7 +32,6 @@ def run_messenger():
             mode = state.get("mode")
             t = text.lower()
 
-            # AI-состояния первыми
             if mode == "ai_post":
                 if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
@@ -40,12 +39,18 @@ def run_messenger():
                     continue
 
                 new_state = {"mode": "ai_choose", "text": text, "variants": [], "attachments": []}
-                if hasattr(event, 'attachments') and event.attachments:
-                    for an, av in event.attachments.items():
-                        if av and isinstance(av, dict):
-                            oid = av.get("owner_id"); iid = av.get("id")
-                            if oid and iid:
-                                new_state["attachments"].append(f"{an}{oid}_{iid}")
+                if event.attachments:
+                    for att in event.attachments:
+                        att_type = att.get("type")
+                        att_obj = att.get(att_type, {})
+                        oid = att_obj.get("owner_id")
+                        iid = att_obj.get("id")
+                        ak = att_obj.get("access_key", "")
+                        if oid and iid:
+                            att_str = f"{att_type}{oid}_{iid}"
+                            if ak:
+                                att_str += f"_{ak}"
+                            new_state["attachments"].append(att_str)
                 admin_state[user_id] = new_state
 
                 send_message(vk, user_id, "⏳ Генерирую варианты...")
@@ -113,7 +118,6 @@ def run_messenger():
                 send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
                 continue
 
-            # Остальные состояния
             if t in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
                 send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
