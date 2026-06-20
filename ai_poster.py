@@ -51,7 +51,8 @@ def generate_variants(text):
             },
             json={
                 "model": "google/gemini-2.5-flash-lite",
-                "messages": [{"role": "user", "content": prompt}]
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1500
             },
             timeout=60
         )
@@ -61,7 +62,7 @@ def generate_variants(text):
         if response.status_code == 200:
             data = response.json()
             result = data["choices"][0]["message"]["content"]
-            ai_log(f"Ответ: {result[:200]}")
+            ai_log(f"Ответ: {result[:200]}...")
             return result
         else:
             ai_log(f"Ошибка {response.status_code}: {response.text[:300]}")
@@ -74,7 +75,6 @@ def parse_variants(result):
     """Разбивает ответ на варианты"""
     variants = []
     
-    # Сохраняем сырой ответ
     try:
         with open("last_ai_response.txt", "w", encoding="utf-8") as f:
             f.write(result)
@@ -83,9 +83,16 @@ def parse_variants(result):
     
     result = result.strip()
     
-    # Разбиваем по двойным переносам строк
-    parts = result.split("\n\n")
-    variants = [p.strip() for p in parts if len(p.strip()) > 20]
+    # Разбиваем по разделителю ---
+    if "---" in result:
+        parts = result.split("---")
+    else:
+        parts = result.split("\n\n")
     
-    ai_log(f"Найдено вариантов: {len(variants)} (частей: {len(parts)})")
+    for p in parts:
+        p = p.strip()
+        if len(p) > 20:
+            variants.append(p)
+    
+    ai_log(f"Найдено вариантов: {len(variants)}")
     return variants[:3]
