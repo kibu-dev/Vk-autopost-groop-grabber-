@@ -39,82 +39,8 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
 
-                admin_state[user_id] = {"mode": "ai_choose", "text": text, "variants": [], "chosen": "", "attachments": []}
-                send_message(vk, user_id, "⏳ Генерирую варианты...")
-                result = generate_variants(text)
-                if result:
-                    variants = parse_variants(result)
-                    if len(variants) >= 3:
-                        admin_state[user_id]["variants"] = variants
-                        msg = "🤖 Варианты:\n\n"
-                        for i, v in enumerate(variants[:3], 1):
-                            msg += f"📝 {i}. {v}\n\n"
-                        send_message(vk, user_id, msg, get_variants_keyboard())
-                    else:
-                        send_message(vk, user_id, "❌ Не удалось получить варианты.", get_admin_main_keyboard())
-                        admin_state.pop(user_id, None)
-                else:
-                    send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None)
-                continue
-
-            # ─── AI: выбор варианта ───
-            if mode == "ai_choose":
-                if t in ["✅ выбрать 1", "✅ выбрать 2", "✅ выбрать 3"]:
-                    idx = int(t.split()[-1]) - 1
-                    if idx < len(state.get("variants", [])):
-                        state["chosen"] = state["variants"][idx]
-                        state["mode"] = "ai_attach"
-                        send_message(vk, user_id, f"📎 Добавить фото/видео к посту?\n\n{state['chosen'][:200]}...", get_attach_keyboard())
-                    else:
-                        admin_state.pop(user_id, None)
-                        send_message(vk, user_id, "❌ Ошибка выбора.", get_admin_main_keyboard())
-                elif t == "✏️ свой текст":
-                    admin_state[user_id]["mode"] = "ai_custom"
-                    send_message(vk, user_id, "✏️ Напишите свой текст:", get_cancel_keyboard())
-                elif t == "🔄 ещё варианты":
-                    result = generate_variants(state["text"])
-                    if result:
-                        variants = parse_variants(result)
-                        if len(variants) >= 3:
-                            state["variants"] = variants
-                            msg = "🤖 Новые варианты:\n\n"
-                            for i, v in enumerate(variants[:3], 1):
-                                msg += f"📝 {i}. {v}\n\n"
-                            send_message(vk, user_id, msg, get_variants_keyboard())
-                        else:
-                            send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
-                    else:
-                        send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
-                elif t == "❌ отмена":
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                continue
-
-            # ─── AI: прикрепление фото ───
-            if mode == "ai_attach":
-                if t == "✅ нет, опубликовать":
-                    r = vk_user.wall.post(owner_id=-GROUP_ID, message=state["chosen"], attachments=None, from_group=1)
-                    add_published_post(r["post_id"], ADMIN_ID, state["chosen"])
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
-                elif t == "📷 да, прикрепить":
-                    state["mode"] = "ai_attach_wait"
-                    send_message(vk, user_id, "📷 Пришлите фото или видео:", get_cancel_keyboard())
-                elif t in ["🔙 отмена", "❌ отмена"]:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                continue
-
-            # ─── AI: получение фото ───
-            if mode == "ai_attach_wait":
-                if t in ["🔙 отмена", "❌ отмена"]:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                    continue
-
+                # Собираем вложения из первого сообщения
                 attachments = []
-
                 if hasattr(event, 'attachments') and event.attachments:
                     for att in event.attachments:
                         att_type = att.get("type")
@@ -144,18 +70,71 @@ def run_messenger():
                                     if ak:
                                         att_str += f"_{ak}"
                                     attachments.append(att_str)
-                    except Exception as e:
-                        print(f"Ошибка получения вложений: {e}")
+                    except:
+                        pass
 
-                if not attachments:
-                    send_message(vk, user_id, "❌ Не вижу фото. Попробуйте ещё раз или Отмена.", get_cancel_keyboard())
-                    continue
+                admin_state[user_id] = {
+                    "mode": "ai_choose",
+                    "text": text,
+                    "variants": [],
+                    "chosen": "",
+                    "attachments": attachments
+                }
+                send_message(vk, user_id, "⏳ Генерирую варианты...")
+                result = generate_variants(text)
+                if result:
+                    variants = parse_variants(result)
+                    if len(variants) >= 3:
+                        admin_state[user_id]["variants"] = variants
+                        msg = "🤖 Варианты:\n\n"
+                        for i, v in enumerate(variants[:3], 1):
+                            msg += f"📝 {i}. {v}\n\n"
+                        send_message(vk, user_id, msg, get_variants_keyboard())
+                    else:
+                        send_message(vk, user_id, "❌ Не удалось получить варианты.", get_admin_main_keyboard())
+                        admin_state.pop(user_id, None)
+                else:
+                    send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                continue
 
-                att_str = ",".join(attachments) if attachments else None
-                r = vk_user.wall.post(owner_id=-GROUP_ID, message=state["chosen"], attachments=att_str, from_group=1)
-                add_published_post(r["post_id"], ADMIN_ID, state["chosen"])
-                admin_state.pop(user_id, None)
-                send_message(vk, user_id, "✅ Опубликовано с фото!", get_admin_main_keyboard())
+            # ─── AI: выбор варианта ───
+            if mode == "ai_choose":
+                if t in ["✅ выбрать 1", "✅ выбрать 2", "✅ выбрать 3"]:
+                    idx = int(t.split()[-1]) - 1
+                    if idx < len(state.get("variants", [])):
+                        chosen = state["variants"][idx]
+                        att = ",".join(state.get("attachments", [])) or None
+                        r = vk_user.wall.post(owner_id=-GROUP_ID, message=chosen, attachments=att, from_group=1)
+                        add_published_post(r["post_id"], ADMIN_ID, chosen)
+                        admin_state.pop(user_id, None)
+                        msg = "✅ Опубликовано!"
+                        if att:
+                            msg += " 📎"
+                        send_message(vk, user_id, msg, get_admin_main_keyboard())
+                    else:
+                        admin_state.pop(user_id, None)
+                        send_message(vk, user_id, "❌ Ошибка выбора.", get_admin_main_keyboard())
+                elif t == "✏️ свой текст":
+                    admin_state[user_id]["mode"] = "ai_custom"
+                    send_message(vk, user_id, "✏️ Напишите свой текст:", get_cancel_keyboard())
+                elif t == "🔄 ещё варианты":
+                    result = generate_variants(state["text"])
+                    if result:
+                        variants = parse_variants(result)
+                        if len(variants) >= 3:
+                            state["variants"] = variants
+                            msg = "🤖 Новые варианты:\n\n"
+                            for i, v in enumerate(variants[:3], 1):
+                                msg += f"📝 {i}. {v}\n\n"
+                            send_message(vk, user_id, msg, get_variants_keyboard())
+                        else:
+                            send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
+                    else:
+                        send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
+                elif t == "❌ отмена":
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                 continue
 
             # ─── AI: свой текст ───
@@ -165,9 +144,11 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
 
-                state["chosen"] = text
-                state["mode"] = "ai_attach"
-                send_message(vk, user_id, f"📎 Добавить фото/видео к посту?\n\n{text[:200]}...", get_attach_keyboard())
+                att = ",".join(state.get("attachments", [])) or None
+                r = vk_user.wall.post(owner_id=-GROUP_ID, message=text, attachments=att, from_group=1)
+                add_published_post(r["post_id"], ADMIN_ID, text)
+                admin_state.pop(user_id, None)
+                send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
                 continue
 
             # ─── Остальные состояния ───
@@ -502,7 +483,7 @@ def run_messenger():
 
             elif t == "✍️ создать пост":
                 admin_state[user_id] = {"mode": "ai_post"}
-                send_message(vk, user_id, "📝 Пришлите текст для поста:", get_cancel_keyboard())
+                send_message(vk, user_id, "📝 Пришлите текст и фото (можно всё вместе):", get_cancel_keyboard())
 
         else:
             send_message(vk, user_id, "Нажмите кнопку.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
