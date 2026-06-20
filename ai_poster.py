@@ -12,11 +12,13 @@ def load_prompt():
 
 def generate_variants(text):
     if not OPENROUTER_API_KEY:
+        print("❌ Нет API ключа")
         return None
     
     prompt = load_prompt().replace("{text}", text)
     
     try:
+        print(f"📤 Отправляю запрос...")
         response = requests.post(
             url="https://openrouter.ai/api/v1/chat/completions",
             headers={
@@ -30,14 +32,17 @@ def generate_variants(text):
             timeout=30
         )
         
+        print(f"📥 Статус: {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
             return data["choices"][0]["message"]["content"]
         else:
-            print(f"OpenRouter ошибка: {response.status_code}")
+            print(f"❌ OpenRouter ошибка: {response.status_code}")
+            print(f"Ответ: {response.text[:500]}")
             return None
     except Exception as e:
-        print(f"OpenRouter ошибка: {e}")
+        print(f"❌ OpenRouter ошибка: {e}")
         return None
 
 def parse_variants(result):
