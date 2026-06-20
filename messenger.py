@@ -70,7 +70,7 @@ def run_messenger():
                 result = generate_variants(text)
                 if result:
                     variants = parse_variants(result)
-                    if variants:
+                    if variants and len(variants[0]) > 20:
                         admin_state[user_id]["variants"] = variants
                         send_message(vk, user_id, f"🤖 Готовый пост:\n\n{variants[0]}", get_variants_keyboard())
                     else:
@@ -100,7 +100,7 @@ def run_messenger():
                     result = generate_variants(state["text"])
                     if result:
                         variants = parse_variants(result)
-                        if variants:
+                        if variants and len(variants[0]) > 20:
                             state["variants"] = variants
                             send_message(vk, user_id, f"🤖 Новый вариант:\n\n{variants[0]}", get_variants_keyboard())
                         else:
