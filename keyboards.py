@@ -183,3 +183,12 @@ def get_variants_keyboard():
     k.add_button("🔄 Ещё варианты", VkKeyboardColor.SECONDARY)
     k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
     return k
+
+def get_attach_keyboard():
+    k = VkKeyboard(one_time=True)
+    k.add_button("📷 Да, прикрепить", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("✅ Нет, опубликовать", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
+    return k
