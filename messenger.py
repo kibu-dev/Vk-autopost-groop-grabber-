@@ -30,27 +30,29 @@ def run_messenger():
         if is_admin and user_id in admin_state:
             state = admin_state[user_id]
             mode = state.get("mode")
+            t = text.lower()
 
+            # AI-состояния первыми
             if mode == "ai_post":
-                if text.lower() in ["🔙 отмена", "❌ отмена"]:
+                if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
 
-                admin_state[user_id] = {"mode": "ai_wait", "text": text, "attachments": []}
+                new_state = {"mode": "ai_choose", "text": text, "variants": [], "attachments": []}
                 if hasattr(event, 'attachments') and event.attachments:
                     for an, av in event.attachments.items():
                         if av and isinstance(av, dict):
                             oid = av.get("owner_id"); iid = av.get("id")
                             if oid and iid:
-                                admin_state[user_id]["attachments"].append(f"{an}{oid}_{iid}")
+                                new_state["attachments"].append(f"{an}{oid}_{iid}")
+                admin_state[user_id] = new_state
 
                 send_message(vk, user_id, "⏳ Генерирую варианты...")
                 result = generate_variants(text)
                 if result:
                     variants = parse_variants(result)
                     if len(variants) >= 3:
-                        admin_state[user_id]["mode"] = "ai_choose"
                         admin_state[user_id]["variants"] = variants
                         msg = "🤖 Варианты:\n\n"
                         for i, v in enumerate(variants[:3], 1):
@@ -67,12 +69,16 @@ def run_messenger():
             if mode == "ai_choose":
                 if t in ["✅ выбрать 1", "✅ выбрать 2", "✅ выбрать 3"]:
                     idx = int(t.split()[-1]) - 1
-                    chosen = state["variants"][idx]
-                    att = ",".join(state.get("attachments", [])) or None
-                    r = vk_user.wall.post(owner_id=-GROUP_ID, message=chosen, attachments=att, from_group=1)
-                    add_published_post(r["post_id"], ADMIN_ID, chosen)
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
+                    if idx < len(state.get("variants", [])):
+                        chosen = state["variants"][idx]
+                        att = ",".join(state.get("attachments", [])) or None
+                        r = vk_user.wall.post(owner_id=-GROUP_ID, message=chosen, attachments=att, from_group=1)
+                        add_published_post(r["post_id"], ADMIN_ID, chosen)
+                        admin_state.pop(user_id, None)
+                        send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
+                    else:
+                        admin_state.pop(user_id, None)
+                        send_message(vk, user_id, "❌ Ошибка выбора.", get_admin_main_keyboard())
                 elif t == "✏️ свой текст":
                     admin_state[user_id]["mode"] = "ai_custom"
                     send_message(vk, user_id, "✏️ Напишите свой текст:", get_cancel_keyboard())
@@ -96,7 +102,7 @@ def run_messenger():
                 continue
 
             if mode == "ai_custom":
-                if text.lower() in ["🔙 отмена", "❌ отмена"]:
+                if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
@@ -107,7 +113,8 @@ def run_messenger():
                 send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
                 continue
 
-            if text.lower() in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
+            # Остальные состояния
+            if t in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
                 send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                 continue
