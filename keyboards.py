@@ -38,6 +38,8 @@ def get_admin_main_keyboard():
     k.add_button("📊 Статистика", VkKeyboardColor.SECONDARY)
     k.add_button("⚙️ Автоматизация", VkKeyboardColor.SECONDARY)
     k.add_line()
+    k.add_button("🤖 AI-постер", VkKeyboardColor.SECONDARY)
+    k.add_line()
     k.add_button("🔙 Пользовательское меню", VkKeyboardColor.SECONDARY)
     return k
 
@@ -158,4 +160,26 @@ def get_group_accept_keyboard():
     k.add_button("⏸️ Выключить группу", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_ai_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("✍️ Создать пост", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("📋 Промт", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_variants_keyboard():
+    k = VkKeyboard(one_time=True)
+    k.add_button("✅ Выбрать 1", VkKeyboardColor.POSITIVE)
+    k.add_button("✅ Выбрать 2", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("✅ Выбрать 3", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("✏️ Свой текст", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("🔄 Ещё варианты", VkKeyboardColor.SECONDARY)
+    k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
     return k
