@@ -5,7 +5,7 @@ from datetime import datetime
 from config import *
 from utils import *
 from keyboards import *
-from ai_poster import generate_variants, parse_variants, load_prompt
+from ai_poster import generate_variants, parse_variants, load_prompt, ai_log
 
 waiting_support = set()
 selected_post = {}
@@ -27,6 +27,11 @@ def run_messenger():
         text = event.text.strip() if event.text else ""
         is_admin = (user_id == ADMIN_ID)
 
+        # Логируем всё от админа
+        if is_admin:
+            has_att = bool(event.attachments) if hasattr(event, 'attachments') else "NO_ATTR"
+            ai_log(f"TEXT: '{text[:100] if text else 'ПУСТО'}' | ATTACH: {has_att}")
+
         if is_admin and user_id in admin_state:
             state = admin_state[user_id]
             mode = state.get("mode")
@@ -39,9 +44,9 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
 
-                # Собираем вложения из первого сообщения
                 attachments = []
                 if hasattr(event, 'attachments') and event.attachments:
+                    ai_log(f"ATTACH DATA: {event.attachments}")
                     for att in event.attachments:
                         att_type = att.get("type")
                         att_obj = att.get(att_type, {})
@@ -57,8 +62,10 @@ def run_messenger():
                 if not attachments:
                     try:
                         msg = vk_user.messages.getById(message_ids=event.message_id)
+                        ai_log(f"API MSG: {msg}")
                         if msg and msg.get("items"):
                             atts = msg["items"][0].get("attachments", [])
+                            ai_log(f"API ATTS: {atts}")
                             for att in atts:
                                 att_type = att.get("type")
                                 att_obj = att.get(att_type, {})
@@ -70,8 +77,10 @@ def run_messenger():
                                     if ak:
                                         att_str += f"_{ak}"
                                     attachments.append(att_str)
-                    except:
-                        pass
+                    except Exception as e:
+                        ai_log(f"API ERROR: {e}")
+
+                ai_log(f"FOUND ATTACHMENTS: {len(attachments)}")
 
                 admin_state[user_id] = {
                     "mode": "ai_choose",
@@ -483,7 +492,7 @@ def run_messenger():
 
             elif t == "✍️ создать пост":
                 admin_state[user_id] = {"mode": "ai_post"}
-                send_message(vk, user_id, "📝 Пришлите текст и фото (можно всё вместе):", get_cancel_keyboard())
+                send_message(vk, user_id, "📝 Пришлите текст и фото:", get_cancel_keyboard())
 
         else:
             send_message(vk, user_id, "Нажмите кнопку.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
