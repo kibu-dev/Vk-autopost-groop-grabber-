@@ -178,6 +178,8 @@ def get_variants_keyboard():
     k.add_button("✏️ Свой текст", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("🔄 Ещё вариант", VkKeyboardColor.SECONDARY)
+    k.add_line()
+    k.add_button("🖼️ Без картинки", VkKeyboardColor.SECONDARY)
     k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
     return k
 
