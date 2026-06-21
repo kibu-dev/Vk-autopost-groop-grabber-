@@ -5,7 +5,7 @@ from datetime import datetime
 from config import *
 from utils import *
 from keyboards import *
-from ai_poster import generate_variants, parse_variants, load_prompt, ai_log, generate_image, generate_image_prompt
+from ai_poster import generate_variants, parse_variants, load_prompt, ai_log, generate_image, generate_image_prompt, upload_image_to_vk
 
 waiting_support = set()
 selected_post = {}
@@ -86,7 +86,7 @@ def run_messenger():
                                     vk.messages.send(
                                         user_id=user_id,
                                         message="🖼️ Сгенерированная картинка:",
-                                        attachment=f"photo{img_url}",
+                                        attachment=img_url,
                                         random_id=0
                                     )
                                 except:
@@ -106,13 +106,15 @@ def run_messenger():
                 if t == "✅ опубликовать":
                     chosen = state["variants"][0] if state.get("variants") else state["text"]
                     
-                    # Собираем вложения: свои + AI-картинка
                     all_attachments = list(state.get("attachments", []))
+                    
+                    # Если есть AI-картинка — загружаем в ВК
                     if state.get("ai_image_url") and not all_attachments:
-                        # Прикрепляем AI-картинку по URL
-                        ai_log(f"Публикация с AI-картинкой: {state['ai_image_url']}")
-                        # VK API не принимает URL напрямую, просто публикуем текст
-                        pass
+                        send_message(vk, user_id, "📤 Загружаю картинку в ВК...")
+                        vk_photo = upload_image_to_vk(state["ai_image_url"])
+                        if vk_photo:
+                            all_attachments.append(vk_photo)
+                            ai_log(f"Картинка прикреплена: {vk_photo}")
                     
                     att = ",".join(all_attachments) if all_attachments else None
                     r = vk_user.wall.post(owner_id=-GROUP_ID, message=chosen, attachments=att, from_group=1)
@@ -142,7 +144,7 @@ def run_messenger():
                                         vk.messages.send(
                                             user_id=user_id,
                                             message="🖼️ Новая картинка:",
-                                            attachment=f"photo{img_url}",
+                                            attachment=img_url,
                                             random_id=0
                                         )
                                     except:
