@@ -3,7 +3,7 @@ import json
 import re
 import time
 from datetime import datetime
-from config import OPENROUTER_API_KEY, USER_TOKEN, GROUP_TOKEN, GROUP_ID
+from config import OPENROUTER_API_KEY, POLLINATIONS_API_KEY, GROUP_TOKEN, GROUP_ID
 
 PROMPT_FILE = "prompt.txt"
 LOG_FILE = "ai_log.json"
@@ -37,11 +37,11 @@ def load_prompt():
 
 def generate_variants(text):
     if not OPENROUTER_API_KEY:
-        ai_log("Нет API ключа")
+        ai_log("Нет API ключа OpenRouter")
         return None
     
     prompt = load_prompt().replace("{text}", text)
-    ai_log(f"Запрос: {text[:100]}")
+    ai_log(f"Запрос текста: {text[:100]}")
     
     try:
         response = requests.post(
@@ -86,22 +86,27 @@ def parse_variants(result):
     return []
 
 def generate_image(prompt):
-    """Генерирует картинку через Pollinations.ai, возвращает URL"""
+    """Генерирует картинку через Pollinations.ai API, возвращает bytes"""
+    if not POLLINATIONS_API_KEY:
+        ai_log("Нет API ключа Pollinations")
+        return None
+    
     try:
         import urllib.parse
         encoded = urllib.parse.quote(prompt[:200])
-        image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
+        image_url = f"https://gen.pollinations.ai/image/{encoded}?model=flux&width=1024&height=1024&key={POLLINATIONS_API_KEY}"
         
         ai_log(f"Запрос картинки: {prompt[:100]}")
         
-        for _ in range(3):
-            response = requests.head(image_url, timeout=10)
-            if response.status_code == 200:
-                ai_log("Картинка сгенерирована")
-                return image_url
-            time.sleep(3)
+        for attempt in range(5):
+            time.sleep(5)
+            response = requests.get(image_url, timeout=30)
+            if response.status_code == 200 and len(response.content) > 1000:
+                ai_log(f"Картинка скачана: {len(response.content)} байт")
+                return response.content
+            ai_log(f"Попытка {attempt+1}: статус {response.status_code}, размер {len(response.content)}")
         
-        ai_log("Не удалось сгенерировать картинку")
+        ai_log("Не удалось скачать картинку")
         return None
     except Exception as e:
         ai_log(f"Ошибка генерации картинки: {e}")
@@ -138,34 +143,20 @@ def generate_image_prompt(text):
     except:
         return text[:100]
 
-def upload_image_to_vk(image_url):
-    """Скачивает картинку и загружает в ВК, возвращает строку для attachments"""
+def upload_image_to_vk(image_data):
+    """Загружает картинку (bytes) в ВК, возвращает строку для attachments"""
     try:
-        ai_log(f"Скачиваю картинку: {image_url}")
+        ai_log(f"Загружаю картинку в ВК: {len(image_data)} байт")
         
-        # Скачиваем картинку
-        img_response = requests.get(image_url, timeout=30)
-        if img_response.status_code != 200:
-            ai_log(f"Ошибка скачивания: {img_response.status_code}")
-            return None
-        
-        img_data = img_response.content
-        ai_log(f"Скачано: {len(img_data)} байт")
-        
-        # Загружаем в ВК через messages.getUploadServer
         import vk_api
         vk = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
         
-        # Получаем сервер для загрузки
         upload_server = vk.photos.getMessagesUploadServer(group_id=GROUP_ID)
-        ai_log(f"Upload URL: {upload_server['upload_url'][:50]}...")
         
-        # Загружаем фото
-        files = {'photo': ('image.jpg', img_data, 'image/jpeg')}
+        files = {'photo': ('image.jpg', image_data, 'image/jpeg')}
         upload_response = requests.post(upload_server['upload_url'], files=files).json()
-        ai_log(f"Upload response: {upload_response}")
+        ai_log(f"Upload: фото загружено")
         
-        # Сохраняем фото
         save_result = vk.photos.saveMessagesPhoto(
             photo=upload_response['photo'],
             server=upload_response['server'],
@@ -175,12 +166,10 @@ def upload_image_to_vk(image_url):
         if save_result:
             photo = save_result[0]
             att_str = f"photo{photo['owner_id']}_{photo['id']}"
-            ai_log(f"Фото загружено: {att_str}")
+            ai_log(f"Фото сохранено: {att_str}")
             return att_str
-        else:
-            ai_log("Не удалось сохранить фото")
-            return None
-            
+        
+        return None
     except Exception as e:
-        ai_log(f"Ошибка загрузки фото в ВК: {e}")
+        ai_log(f"Ошибка загрузки фото: {e}")
         return None
