@@ -1,5 +1,6 @@
 import re
 import vk_api
+import requests
 from vk_api.longpoll import VkLongPoll, VkEventType
 from datetime import datetime
 from config import *
@@ -65,7 +66,7 @@ def run_messenger():
                     "text": text,
                     "variants": [],
                     "attachments": attachments,
-                    "ai_image_url": None
+                    "ai_image_data": None
                 }
                 send_message(vk, user_id, "⏳ Генерирую пост...")
                 result = generate_variants(text)
@@ -78,19 +79,25 @@ def run_messenger():
                         if not attachments:
                             send_message(vk, user_id, "🎨 Генерирую картинку...")
                             img_prompt = generate_image_prompt(variants[0])
-                            img_url = generate_image(img_prompt)
-                            if img_url:
-                                admin_state[user_id]["ai_image_url"] = img_url
-                                # Отправляем картинку админу
+                            img_data = generate_image(img_prompt)
+                            if img_data:
+                                admin_state[user_id]["ai_image_data"] = img_data
+                                # Отправляем картинку админу в ЛС
                                 try:
-                                    vk.messages.send(
-                                        user_id=user_id,
-                                        message="🖼️ Сгенерированная картинка:",
-                                        attachment=img_url,
-                                        random_id=0
-                                    )
+                                    upload_server = vk.photos.getMessagesUploadServer(group_id=GROUP_ID)
+                                    files = {'photo': ('image.jpg', img_data, 'image/jpeg')}
+                                    up = requests.post(upload_server['upload_url'], files=files).json()
+                                    saved = vk.photos.saveMessagesPhoto(photo=up['photo'], server=up['server'], hash=up['hash'])
+                                    if saved:
+                                        photo = saved[0]
+                                        vk.messages.send(
+                                            user_id=user_id,
+                                            message="🖼️ Сгенерированная картинка:",
+                                            attachment=f"photo{photo['owner_id']}_{photo['id']}",
+                                            random_id=0
+                                        )
                                 except:
-                                    ai_log("Не удалось отправить картинку")
+                                    ai_log("Не удалось отправить картинку в ЛС")
                         
                         send_message(vk, user_id, f"🤖 Готовый пост:\n\n{variants[0]}", get_variants_keyboard())
                     else:
@@ -109,12 +116,11 @@ def run_messenger():
                     all_attachments = list(state.get("attachments", []))
                     
                     # Если есть AI-картинка — загружаем в ВК
-                    if state.get("ai_image_url") and not all_attachments:
-                        send_message(vk, user_id, "📤 Загружаю картинку в ВК...")
-                        vk_photo = upload_image_to_vk(state["ai_image_url"])
+                    if state.get("ai_image_data") and not all_attachments:
+                        send_message(vk, user_id, "📤 Загружаю картинку...")
+                        vk_photo = upload_image_to_vk(state["ai_image_data"])
                         if vk_photo:
                             all_attachments.append(vk_photo)
-                            ai_log(f"Картинка прикреплена: {vk_photo}")
                     
                     att = ",".join(all_attachments) if all_attachments else None
                     r = vk_user.wall.post(owner_id=-GROUP_ID, message=chosen, attachments=att, from_group=1)
@@ -133,20 +139,25 @@ def run_messenger():
                         variants = parse_variants(result)
                         if variants and len(variants[0]) > 20:
                             state["variants"] = variants
-                            # Генерируем новую картинку
                             if not state.get("attachments"):
                                 send_message(vk, user_id, "🎨 Генерирую новую картинку...")
                                 img_prompt = generate_image_prompt(variants[0])
-                                img_url = generate_image(img_prompt)
-                                if img_url:
-                                    state["ai_image_url"] = img_url
+                                img_data = generate_image(img_prompt)
+                                if img_data:
+                                    state["ai_image_data"] = img_data
                                     try:
-                                        vk.messages.send(
-                                            user_id=user_id,
-                                            message="🖼️ Новая картинка:",
-                                            attachment=img_url,
-                                            random_id=0
-                                        )
+                                        upload_server = vk.photos.getMessagesUploadServer(group_id=GROUP_ID)
+                                        files = {'photo': ('image.jpg', img_data, 'image/jpeg')}
+                                        up = requests.post(upload_server['upload_url'], files=files).json()
+                                        saved = vk.photos.saveMessagesPhoto(photo=up['photo'], server=up['server'], hash=up['hash'])
+                                        if saved:
+                                            photo = saved[0]
+                                            vk.messages.send(
+                                                user_id=user_id,
+                                                message="🖼️ Новая картинка:",
+                                                attachment=f"photo{photo['owner_id']}_{photo['id']}",
+                                                random_id=0
+                                            )
                                     except:
                                         pass
                             send_message(vk, user_id, f"🤖 Новый вариант:\n\n{variants[0]}", get_variants_keyboard())
@@ -155,7 +166,7 @@ def run_messenger():
                     else:
                         send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
                 elif t == "🖼️ без картинки":
-                    state["ai_image_url"] = None
+                    state["ai_image_data"] = None
                     send_message(vk, user_id, "🖼️ Картинка убрана. Нажмите Опубликовать.", get_variants_keyboard())
                 elif t == "❌ отмена":
                     admin_state.pop(user_id, None)
