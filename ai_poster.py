@@ -1,6 +1,7 @@
 import requests
 import json
 import re
+import time
 from datetime import datetime
 from config import OPENROUTER_API_KEY
 
@@ -72,7 +73,6 @@ def generate_variants(text):
         return None
 
 def parse_variants(result):
-    """Возвращает весь ответ как один вариант"""
     try:
         with open("last_ai_response.txt", "w", encoding="utf-8") as f:
             f.write(result)
@@ -84,3 +84,58 @@ def parse_variants(result):
         ai_log(f"Длина ответа: {len(text)} символов")
         return [text]
     return []
+
+def generate_image(prompt):
+    """Генерирует картинку через Pollinations.ai, возвращает URL"""
+    try:
+        # Кодируем запрос для URL
+        import urllib.parse
+        encoded = urllib.parse.quote(prompt[:200])
+        image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
+        
+        ai_log(f"Запрос картинки: {prompt[:100]}")
+        
+        # Проверяем что картинка сгенерировалась
+        for _ in range(3):
+            response = requests.head(image_url, timeout=10)
+            if response.status_code == 200:
+                ai_log("Картинка сгенерирована")
+                return image_url
+            time.sleep(3)
+        
+        ai_log("Не удалось сгенерировать картинку")
+        return None
+    except Exception as e:
+        ai_log(f"Ошибка генерации картинки: {e}")
+        return None
+
+def generate_image_prompt(text):
+    """Создаёт короткий промт для картинки на основе текста поста"""
+    if not OPENROUTER_API_KEY:
+        return text[:100]
+    
+    prompt = f"Напиши короткое описание картинки (до 100 символов, на русском) для поста на тему: {text[:200]}"
+    
+    try:
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "google/gemini-2.5-flash-lite",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 100
+            },
+            timeout=20
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            result = data["choices"][0]["message"]["content"].strip()
+            ai_log(f"Промт картинки: {result}")
+            return result
+        return text[:100]
+    except:
+        return text[:100]
