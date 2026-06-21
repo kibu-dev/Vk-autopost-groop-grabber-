@@ -113,11 +113,15 @@ def generate_image(prompt):
         return None
 
 def generate_image_prompt(text):
-    """Создаёт короткий промт для картинки на основе текста поста"""
+    """Создаёт короткий промт для картинки на английском"""
     if not OPENROUTER_API_KEY:
         return text[:100]
     
-    prompt = f"Напиши короткое описание картинки (до 100 символов, на русском) для поста на тему: {text[:200]}"
+    prompt = f"""Напиши короткое описание картинки на английском языке (до 80 символов) для иллюстрации поста. 
+Только описание, без эмодзи, без кавычек. 
+Опиши что должно быть на картинке: объекты, цвета, стиль.
+
+Пост: {text[:300]}"""
     
     try:
         response = requests.post(
@@ -129,7 +133,7 @@ def generate_image_prompt(text):
             json={
                 "model": "google/gemini-2.5-flash-lite",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 100
+                "max_tokens": 80
             },
             timeout=20
         )
@@ -137,11 +141,12 @@ def generate_image_prompt(text):
         if response.status_code == 200:
             data = response.json()
             result = data["choices"][0]["message"]["content"].strip()
+            result = result.strip('"\'')
             ai_log(f"Промт картинки: {result}")
             return result
-        return text[:100]
+        return "fitness motivation, healthy lifestyle"
     except:
-        return text[:100]
+        return "fitness motivation, healthy lifestyle"
 
 def upload_image_to_vk(image_data):
     """Загружает картинку (bytes) в ВК, возвращает строку для attachments"""
