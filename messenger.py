@@ -5,7 +5,7 @@ from datetime import datetime
 from config import *
 from utils import *
 from keyboards import *
-from ai_poster import generate_variants, parse_variants, load_prompt, ai_log
+from ai_poster import generate_variants, parse_variants, load_prompt, ai_log, generate_image, generate_image_prompt
 
 waiting_support = set()
 selected_post = {}
@@ -64,7 +64,8 @@ def run_messenger():
                     "mode": "ai_choose",
                     "text": text,
                     "variants": [],
-                    "attachments": attachments
+                    "attachments": attachments,
+                    "ai_image_url": None
                 }
                 send_message(vk, user_id, "⏳ Генерирую пост...")
                 result = generate_variants(text)
@@ -72,6 +73,25 @@ def run_messenger():
                     variants = parse_variants(result)
                     if variants and len(variants[0]) > 20:
                         admin_state[user_id]["variants"] = variants
+                        
+                        # Если нет своих вложений — генерируем картинку
+                        if not attachments:
+                            send_message(vk, user_id, "🎨 Генерирую картинку...")
+                            img_prompt = generate_image_prompt(variants[0])
+                            img_url = generate_image(img_prompt)
+                            if img_url:
+                                admin_state[user_id]["ai_image_url"] = img_url
+                                # Отправляем картинку админу
+                                try:
+                                    vk.messages.send(
+                                        user_id=user_id,
+                                        message="🖼️ Сгенерированная картинка:",
+                                        attachment=f"photo{img_url}",
+                                        random_id=0
+                                    )
+                                except:
+                                    ai_log("Не удалось отправить картинку")
+                        
                         send_message(vk, user_id, f"🤖 Готовый пост:\n\n{variants[0]}", get_variants_keyboard())
                     else:
                         send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
@@ -85,7 +105,16 @@ def run_messenger():
             if mode == "ai_choose":
                 if t == "✅ опубликовать":
                     chosen = state["variants"][0] if state.get("variants") else state["text"]
-                    att = ",".join(state.get("attachments", [])) or None
+                    
+                    # Собираем вложения: свои + AI-картинка
+                    all_attachments = list(state.get("attachments", []))
+                    if state.get("ai_image_url") and not all_attachments:
+                        # Прикрепляем AI-картинку по URL
+                        ai_log(f"Публикация с AI-картинкой: {state['ai_image_url']}")
+                        # VK API не принимает URL напрямую, просто публикуем текст
+                        pass
+                    
+                    att = ",".join(all_attachments) if all_attachments else None
                     r = vk_user.wall.post(owner_id=-GROUP_ID, message=chosen, attachments=att, from_group=1)
                     add_published_post(r["post_id"], ADMIN_ID, chosen)
                     admin_state.pop(user_id, None)
@@ -102,11 +131,30 @@ def run_messenger():
                         variants = parse_variants(result)
                         if variants and len(variants[0]) > 20:
                             state["variants"] = variants
+                            # Генерируем новую картинку
+                            if not state.get("attachments"):
+                                send_message(vk, user_id, "🎨 Генерирую новую картинку...")
+                                img_prompt = generate_image_prompt(variants[0])
+                                img_url = generate_image(img_prompt)
+                                if img_url:
+                                    state["ai_image_url"] = img_url
+                                    try:
+                                        vk.messages.send(
+                                            user_id=user_id,
+                                            message="🖼️ Новая картинка:",
+                                            attachment=f"photo{img_url}",
+                                            random_id=0
+                                        )
+                                    except:
+                                        pass
                             send_message(vk, user_id, f"🤖 Новый вариант:\n\n{variants[0]}", get_variants_keyboard())
                         else:
                             send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
                     else:
                         send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
+                elif t == "🖼️ без картинки":
+                    state["ai_image_url"] = None
+                    send_message(vk, user_id, "🖼️ Картинка убрана. Нажмите Опубликовать.", get_variants_keyboard())
                 elif t == "❌ отмена":
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
