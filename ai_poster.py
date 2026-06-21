@@ -3,7 +3,7 @@ import json
 import re
 import time
 from datetime import datetime
-from config import OPENROUTER_API_KEY
+from config import OPENROUTER_API_KEY, USER_TOKEN, GROUP_TOKEN, GROUP_ID
 
 PROMPT_FILE = "prompt.txt"
 LOG_FILE = "ai_log.json"
@@ -88,14 +88,12 @@ def parse_variants(result):
 def generate_image(prompt):
     """Генерирует картинку через Pollinations.ai, возвращает URL"""
     try:
-        # Кодируем запрос для URL
         import urllib.parse
         encoded = urllib.parse.quote(prompt[:200])
         image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
         
         ai_log(f"Запрос картинки: {prompt[:100]}")
         
-        # Проверяем что картинка сгенерировалась
         for _ in range(3):
             response = requests.head(image_url, timeout=10)
             if response.status_code == 200:
@@ -139,3 +137,50 @@ def generate_image_prompt(text):
         return text[:100]
     except:
         return text[:100]
+
+def upload_image_to_vk(image_url):
+    """Скачивает картинку и загружает в ВК, возвращает строку для attachments"""
+    try:
+        ai_log(f"Скачиваю картинку: {image_url}")
+        
+        # Скачиваем картинку
+        img_response = requests.get(image_url, timeout=30)
+        if img_response.status_code != 200:
+            ai_log(f"Ошибка скачивания: {img_response.status_code}")
+            return None
+        
+        img_data = img_response.content
+        ai_log(f"Скачано: {len(img_data)} байт")
+        
+        # Загружаем в ВК через messages.getUploadServer
+        import vk_api
+        vk = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
+        
+        # Получаем сервер для загрузки
+        upload_server = vk.photos.getMessagesUploadServer(group_id=GROUP_ID)
+        ai_log(f"Upload URL: {upload_server['upload_url'][:50]}...")
+        
+        # Загружаем фото
+        files = {'photo': ('image.jpg', img_data, 'image/jpeg')}
+        upload_response = requests.post(upload_server['upload_url'], files=files).json()
+        ai_log(f"Upload response: {upload_response}")
+        
+        # Сохраняем фото
+        save_result = vk.photos.saveMessagesPhoto(
+            photo=upload_response['photo'],
+            server=upload_response['server'],
+            hash=upload_response['hash']
+        )
+        
+        if save_result:
+            photo = save_result[0]
+            att_str = f"photo{photo['owner_id']}_{photo['id']}"
+            ai_log(f"Фото загружено: {att_str}")
+            return att_str
+        else:
+            ai_log("Не удалось сохранить фото")
+            return None
+            
+    except Exception as e:
+        ai_log(f"Ошибка загрузки фото в ВК: {e}")
+        return None
