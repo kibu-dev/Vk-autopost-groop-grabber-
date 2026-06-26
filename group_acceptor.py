@@ -4,7 +4,7 @@ from config import *
 from utils import *
 
 def run_group_acceptor():
-    vk = vk_api.VkApi(token=USER_TOKEN).get_api()
+    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
     print("👥 Приём в группу запущен")
 
     while True:
@@ -19,7 +19,7 @@ def run_group_acceptor():
                         time.sleep(1)
                 else:
                     print("👥 Нет заявок в группу")
-                time.sleep(300)  # 5 минут
+                time.sleep(300)
             else:
                 time.sleep(10)
         except Exception as e:
