@@ -1,4 +1,5 @@
 import re
+import logging
 import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
 from datetime import datetime
@@ -17,7 +18,7 @@ def run_messenger():
     vk_user_session = vk_api.VkApi(token=USER_TOKEN, api_version="5.131")
     vk_user = vk_user_session.get_api()
     longpoll = VkLongPoll(vk_session, group_id=GROUP_ID, mode=2, preload_messages=True)
-    print("🤖 ЛС бот запущен")
+    logging.info("🤖 ЛС бот запущен")
 
     for event in longpoll.listen():
         if event.type != VkEventType.MESSAGE_NEW or not event.to_me:
@@ -55,7 +56,7 @@ def run_messenger():
                                     att_str += f"_{ak}"
                                 attachments.append(att_str)
                 except Exception as e:
-                    ai_log(f"API ERROR: {e}")
+                    logging.error(f"Ошибка получения вложений: {e}")
 
                 admin_state[user_id] = {
                     "mode": "ai_choose",
