@@ -29,17 +29,19 @@ def run_auto_liker():
             stats = get_liker_stats()
 
             if stats["today"] >= 20:
-                print("❤️ Лимит 20 лайков")
                 time.sleep(300)
                 continue
 
             for group_id in groups:
                 try:
-                    posts = vk.wall.get(owner_id=-group_id, count=5)
+                    # Берём только 1 последний пост
+                    posts = vk.wall.get(owner_id=-group_id, count=1)
+                    
                     for post in posts.get("items", []):
                         pid = post["id"]
                         last_liked = liked_posts.get(str(group_id), 0)
 
+                        # Лайкаем только если это новый пост (ID больше последнего лайкнутого)
                         if pid <= last_liked:
                             continue
 
