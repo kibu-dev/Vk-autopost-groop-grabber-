@@ -16,7 +16,7 @@ def save_liked_post(group_id, post_id):
     save_json(LIKED_FILE, data)
 
 def run_auto_liker():
-    vk = vk_api.VkApi(token=USER_TOKEN).get_api()
+    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
     liked_posts = get_liked_posts()
     print("❤️ Автолайкер запущен")
 
@@ -45,14 +45,12 @@ def run_auto_liker():
 
             for group_id in groups:
                 try:
-                    # Берём только 1 последний пост
                     posts = vk.wall.get(owner_id=-group_id, count=1)
 
                     for post in posts.get("items", []):
                         pid = post["id"]
                         last_liked = liked_posts.get(str(group_id), 0)
 
-                        # Лайкаем только свежий пост (ID больше последнего)
                         if pid <= last_liked:
                             continue
 
