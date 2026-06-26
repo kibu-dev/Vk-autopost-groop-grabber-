@@ -2,7 +2,11 @@ import re
 import json
 import vk_api
 import time
+import os
+import threading
 from datetime import datetime, timedelta
+
+# ─── Файлы ───
 
 GROUPS_FILE = "groups.json"
 WORDS_FILE = "forbidden_words.json"
@@ -21,17 +25,35 @@ FRIEND_STATE_FILE = "friend_state.json"
 FRIEND_STATS_FILE = "friend_stats.json"
 GROUP_ACCEPT_STATE_FILE = "group_accept_state.json"
 GROUP_ACCEPT_STATS_FILE = "group_accept_stats.json"
+MODERATION_FILE = "moderation.json"
+
+# Блокировки для потокобезопасной записи
+_file_locks = {}
+
+def _get_lock(filepath):
+    if filepath not in _file_locks:
+        _file_locks[filepath] = threading.Lock()
+    return _file_locks[filepath]
 
 def load_json(filepath, default=None):
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception:
         return default if default is not None else {}
 
 def save_json(filepath, data):
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    lock = _get_lock(filepath)
+    with lock:
+        try:
+            tmp = filepath + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, filepath)
+        except Exception as e:
+            print(f"Ошибка сохранения {filepath}: {e}")
 
 # ─── Группы-доноры ───
 
@@ -234,7 +256,7 @@ def get_liker_stats():
 
 def add_liker_stat():
     data = get_liker_stats()
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = (datetime.now() + timedelta(hours=3)).strftime("%Y-%m-%d")
     if data["date"] != today:
         data["today"] = 0
         data["date"] = today
@@ -299,9 +321,17 @@ def is_spam(text):
     return any(w in t for w in words)
 
 def contains_any_link(text):
-    if not text: return False
-    for p in [r'https?://[^\s]+', r'www\.[^\s]+', r'[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*']:
-        if re.search(p, text, re.IGNORECASE): return True
+    """Проверяет наличие ссылок (только явные URL, не ложные срабатывания)"""
+    if not text:
+        return False
+    # Только явные URL
+    patterns = [
+        r'https?://[^\s]+',           # http/https ссылки
+        r'www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}',  # www.домен
+    ]
+    for p in patterns:
+        if re.search(p, text, re.IGNORECASE):
+            return True
     return False
 
 def contains_anonymous(text):
@@ -344,27 +374,33 @@ def send_message(vk, user_id, text, keyboard=None):
                          keyboard=keyboard.get_keyboard() if keyboard else None)
     except Exception as e: print(f"Ошибка отправки: {e}")
 
-# ─── Модерация ───
-
-moderation_queue = []
-
-def add_to_moderation(post_id, post_type, user_id, text, attachments_str, reason):
-    global moderation_queue
-    moderation_queue = [m for m in moderation_queue if m["post_id"] != post_id]
-    moderation_queue.append({"post_id": post_id, "post_type": post_type, "user_id": user_id,
-                             "text": text, "attachments": attachments_str, "reason": reason})
+# ─── Модерация (в JSON) ───
 
 def get_moderation_posts():
-    return moderation_queue[-10:]
+    return load_json(MODERATION_FILE, {"posts": []})["posts"]
+
+def add_to_moderation(post_id, post_type, user_id, text, attachments_str, reason):
+    data = load_json(MODERATION_FILE, {"posts": []})
+    data["posts"] = [m for m in data["posts"] if m["post_id"] != post_id]
+    data["posts"].append({
+        "post_id": post_id,
+        "post_type": post_type,
+        "user_id": user_id,
+        "text": text,
+        "attachments": attachments_str or "",
+        "reason": reason
+    })
+    save_json(MODERATION_FILE, data)
 
 def remove_from_moderation(post_id):
-    global moderation_queue
-    moderation_queue = [m for m in moderation_queue if m["post_id"] != post_id]
+    data = load_json(MODERATION_FILE, {"posts": []})
+    data["posts"] = [m for m in data["posts"] if m["post_id"] != post_id]
+    save_json(MODERATION_FILE, data)
 
 def get_stats():
     return {
         "donor_count": len(get_donor_groups()),
-        "pending_moderation": len(moderation_queue) + len(get_pending_grabs()),
+        "pending_moderation": len(get_moderation_posts()) + len(get_pending_grabs()),
         "total_published": len(load_json(PUBLISHED_FILE, {"posts": []})["posts"]),
         "total_grabbed": len(load_json(GRABBED_FILE, {"posts": []})["posts"]),
         "scheduled_count": len(get_scheduled_posts()),
