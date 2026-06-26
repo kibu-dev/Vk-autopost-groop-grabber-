@@ -4,7 +4,7 @@ from config import *
 from utils import *
 
 def run_online_keeper():
-    vk = vk_api.VkApi(token=USER_TOKEN).get_api()
+    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
     print("🟢 Онлайн запущен")
 
     while True:
@@ -12,7 +12,7 @@ def run_online_keeper():
             if is_online_enabled():
                 vk.account.setOnline()
                 print("🟢 Онлайн")
-                time.sleep(240)
+                time.sleep(300)
             else:
                 time.sleep(10)
         except Exception as e:
