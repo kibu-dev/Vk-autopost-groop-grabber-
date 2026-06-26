@@ -1,6 +1,7 @@
 import time
 import random
 import vk_api
+from datetime import datetime, timedelta
 from config import *
 from utils import *
 
@@ -25,23 +26,33 @@ def run_auto_liker():
                 time.sleep(30)
                 continue
 
-            groups = get_liker_groups()
+            # Сброс в 00:00 по Москве
+            now_msk = datetime.now() + timedelta(hours=3)
+            today_str = now_msk.strftime("%Y-%m-%d")
+            
             stats = get_liker_stats()
+            if stats["date"] != today_str:
+                stats["today"] = 0
+                stats["date"] = today_str
+                save_json(LIKER_STATS_FILE, stats)
+                print(f"❤️ Новый день! Сброс на {today_str}")
 
             if stats["today"] >= 20:
                 time.sleep(300)
                 continue
 
+            groups = get_liker_groups()
+
             for group_id in groups:
                 try:
                     # Берём только 1 последний пост
                     posts = vk.wall.get(owner_id=-group_id, count=1)
-                    
+
                     for post in posts.get("items", []):
                         pid = post["id"]
                         last_liked = liked_posts.get(str(group_id), 0)
 
-                        # Лайкаем только если это новый пост (ID больше последнего лайкнутого)
+                        # Лайкаем только свежий пост (ID больше последнего)
                         if pid <= last_liked:
                             continue
 
