@@ -1,4 +1,5 @@
 import time
+import logging
 import vk_api
 from datetime import datetime, timedelta
 from config import *
@@ -6,12 +7,11 @@ from utils import *
 
 def run_grabber():
     vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
-    print("🎣 Граббер запущен")
+    logging.info("🎣 Граббер запущен")
 
-    # Первый запуск — запоминаем последние посты
     donors = get_donor_groups()
     if donors:
-        print("🔍 Первый запуск — запоминаю последние посты...")
+        logging.info("🔍 Первый запуск — запоминаю последние посты...")
         for group_id in donors:
             try:
                 posts = vk.wall.get(owner_id=-group_id, count=1, filter="owner")
@@ -19,15 +19,15 @@ def run_grabber():
                     last_pid = posts["items"][0]["id"]
                     if not is_post_grabbed(group_id, last_pid):
                         add_grabbed_post(group_id, last_pid)
-                        print(f"  📌 Группа {group_id}: запомнен пост {last_pid}")
+                        logging.info(f"  📌 Группа {group_id}: запомнен пост {last_pid}")
             except Exception as e:
-                print(f"  ❌ Группа {group_id}: {e}")
+                logging.error(f"  ❌ Группа {group_id}: {e}")
 
     while True:
         try:
             donors = get_donor_groups()
             if donors:
-                print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Сканирую...")
+                logging.info(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Сканирую...")
 
                 for group_id in donors:
                     try:
@@ -50,7 +50,7 @@ def run_grabber():
                                 reason = "ссылки" if contains_any_link(text) else "спам-слова"
                                 add_pending_grab(post, group_id, reason)
                                 moderate_post(vk, pid, -group_id, text, build_attachments(post), f"{reason} (граббер)", "grab")
-                                print(f"  ⚠️ Пост {pid} → модерация")
+                                logging.info(f"  ⚠️ Пост {pid} → модерация")
                                 continue
 
                             att = build_attachments(post)
@@ -63,15 +63,15 @@ def run_grabber():
                                 publish_date=pub_time
                             )
                             add_scheduled_post(pub_time, text[:200], group_id)
-                            print(f"  📅 Пост {pid} запланирован на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
+                            logging.info(f"  📅 Пост {pid} запланирован на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
 
                             time.sleep(1)
 
                     except Exception as e:
-                        print(f"  ❌ Группа {group_id}: {e}")
+                        logging.error(f"  ❌ Группа {group_id}: {e}")
 
             time.sleep(GRAB_INTERVAL)
 
         except Exception as e:
-            print(f"❌ Граббер: {e}")
+            logging.error(f"❌ Граббер: {e}")
             time.sleep(60)
