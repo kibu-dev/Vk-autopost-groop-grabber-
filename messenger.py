@@ -312,8 +312,9 @@ def run_messenger():
                     for p in posts.get("items", []):
                         if p["id"] == pid:
                             pt = p.get("text", ""); puid = p.get("from_id", 0)
+                            user_first, user_last = get_user_name(vk_user, puid)
                             fn = (f"{pt}\n\nАвтор: Аноним" if contains_anonymous(pt)
-                                  else f"{pt}\n\nАвтор: [id{puid}|{get_user_name(vk_user, puid)[0]} {get_user_name(vk_user, puid)[1]}]")
+                                  else f"{pt}\n\nАвтор: [id{puid}|{user_first} {user_last}]")
                             r = vk_user.wall.post(owner_id=-GROUP_ID, message=fn, attachments=build_attachments(p), from_group=1)
                             vk_user.wall.delete(owner_id=-GROUP_ID, post_id=pid)
                             add_published_post(r["post_id"], puid, pt)
