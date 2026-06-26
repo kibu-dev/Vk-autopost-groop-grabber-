@@ -1,4 +1,5 @@
 import time
+import logging
 import vk_api
 from config import *
 from utils import *
@@ -6,7 +7,7 @@ from utils import *
 def run_pub_users():
     vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
     last_pub = get_last_publish_time()
-    print("👤 Публикатор пользователей запущен (каждые 15 мин)")
+    logging.info("👤 Публикатор пользователей запущен (каждые 15 мин)")
 
     while True:
         try:
@@ -42,11 +43,11 @@ def run_pub_users():
                 add_published_post(result["post_id"], uid, text)
                 last_pub = time.time()
                 save_last_publish_time(last_pub)
-                print(f"✅ Пользователь: опубликован #{pid}")
+                logging.info(f"✅ Пользователь: опубликован #{pid}")
                 break
 
             time.sleep(CHECK_INTERVAL)
 
         except Exception as e:
-            print(f"❌ Пуб пользователей: {e}")
+            logging.error(f"❌ Пуб пользователей: {e}")
             time.sleep(60)
