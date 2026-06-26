@@ -4,7 +4,7 @@ from config import *
 from utils import *
 
 def run_pub_users():
-    vk = vk_api.VkApi(token=USER_TOKEN).get_api()
+    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
     last_pub = get_last_publish_time()
     print("👤 Публикатор пользователей запущен (каждые 15 мин)")
 
