@@ -4,7 +4,7 @@ from config import *
 from utils import *
 
 def run_friend_acceptor():
-    vk = vk_api.VkApi(token=USER_TOKEN).get_api()
+    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
     print("🤝 Друзья запущены")
 
     while True:
