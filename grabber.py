@@ -5,10 +5,10 @@ from config import *
 from utils import *
 
 def run_grabber():
-    vk = vk_api.VkApi(token=USER_TOKEN).get_api()
-    print("🎣 Граббер запущен (каждые 15 мин)")
+    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
+    print("🎣 Граббер запущен")
 
-    # Первый запуск — запоминаем последний пост, не берём
+    # Первый запуск — запоминаем последние посты
     donors = get_donor_groups()
     if donors:
         print("🔍 Первый запуск — запоминаю последние посты...")
@@ -31,8 +31,10 @@ def run_grabber():
 
                 for group_id in donors:
                     try:
-                        posts = vk.wall.get(owner_id=-group_id, count=5, filter="owner")
-                        # Сортируем от старых к новым
+                        if count_today_grabs(group_id) >= MAX_GRAB_PER_GROUP_DAY:
+                            continue
+
+                        posts = vk.wall.get(owner_id=-group_id, count=GRAB_POSTS_PER_GROUP, filter="owner")
                         posts["items"].sort(key=lambda x: x["id"])
 
                         for post in posts.get("items", []):
@@ -68,7 +70,7 @@ def run_grabber():
                     except Exception as e:
                         print(f"  ❌ Группа {group_id}: {e}")
 
-            time.sleep(900)
+            time.sleep(GRAB_INTERVAL)
 
         except Exception as e:
             print(f"❌ Граббер: {e}")
