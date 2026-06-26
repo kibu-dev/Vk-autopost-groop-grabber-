@@ -54,6 +54,12 @@ def run_auto_liker():
                         if pid <= last_liked:
                             continue
 
+                        # Лайкаем только посты с фото или видео
+                        atts = post.get("attachments", [])
+                        has_media = any(a.get("type") in ["photo", "video"] for a in atts)
+                        if not has_media:
+                            continue
+
                         vk.likes.add(type="post", owner_id=-group_id, item_id=pid)
                         save_liked_post(group_id, pid)
                         liked_posts[str(group_id)] = pid
