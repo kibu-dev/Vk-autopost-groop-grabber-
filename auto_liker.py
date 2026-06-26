@@ -1,5 +1,6 @@
 import time
 import random
+import logging
 import vk_api
 from datetime import datetime, timedelta
 from config import *
@@ -18,7 +19,7 @@ def save_liked_post(group_id, post_id):
 def run_auto_liker():
     vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
     liked_posts = get_liked_posts()
-    print("❤️ Автолайкер запущен")
+    logging.info("❤️ Автолайкер запущен")
 
     while True:
         try:
@@ -26,7 +27,6 @@ def run_auto_liker():
                 time.sleep(30)
                 continue
 
-            # Сброс в 00:00 по Москве
             now_msk = datetime.now() + timedelta(hours=3)
             today_str = now_msk.strftime("%Y-%m-%d")
             
@@ -35,7 +35,7 @@ def run_auto_liker():
                 stats["today"] = 0
                 stats["date"] = today_str
                 save_json(LIKER_STATS_FILE, stats)
-                print(f"❤️ Новый день! Сброс на {today_str}")
+                logging.info(f"❤️ Новый день! Сброс на {today_str}")
 
             if stats["today"] >= 20:
                 time.sleep(300)
@@ -58,7 +58,7 @@ def run_auto_liker():
                         save_liked_post(group_id, pid)
                         liked_posts[str(group_id)] = pid
                         add_liker_stat()
-                        print(f"❤️ Лайк: {pid} в {group_id}")
+                        logging.info(f"❤️ Лайк: {pid} в {group_id}")
 
                         delay = random.randint(120, 180)
                         time.sleep(delay)
@@ -67,10 +67,10 @@ def run_auto_liker():
                             break
 
                 except Exception as e:
-                    print(f"❤️ Ошибка в {group_id}: {e}")
+                    logging.error(f"❤️ Ошибка в {group_id}: {e}")
 
             time.sleep(60)
 
         except Exception as e:
-            print(f"❤️ Ошибка: {e}")
+            logging.error(f"❤️ Ошибка: {e}")
             time.sleep(60)
