@@ -129,13 +129,10 @@ def run_messenger():
 
                 try:
                     msg = vk_user.messages.getById(message_ids=event.message_id)
-                    logging.info(f"HOROSCOPE MSG: {msg}")
                     if msg and msg.get("items"):
                         atts = msg["items"][0].get("attachments", [])
-                        logging.info(f"HOROSCOPE ATTS: {atts}")
                         for att in atts:
                             att_type = att.get("type")
-                            logging.info(f"HOROSCOPE ATT TYPE: {att_type}")
                             if att_type == "photo":
                                 att_obj = att.get(att_type, {})
                                 oid = att_obj.get("owner_id")
@@ -143,27 +140,20 @@ def run_messenger():
                                 if oid and iid:
                                     att_str = f"photo{oid}_{iid}"
                                     attachments.append(att_str)
-                                    logging.info(f"HOROSCOPE SAVED: {att_str}")
                 except Exception as e:
                     logging.error(f"HOROSCOPE API ERROR: {e}")
 
                 if not attachments and hasattr(event, 'attachments') and event.attachments:
-                    logging.info(f"HOROSCOPE EVENT: {event.attachments}")
-                    for att in event.attachments:
-                        att_type = att.get("type")
-                        if att_type == "photo":
-                            att_obj = att.get(att_type, {})
-                            oid = att_obj.get("owner_id")
-                            iid = att_obj.get("id")
-                            if oid and iid:
-                                att_str = f"photo{oid}_{iid}"
-                                attachments.append(att_str)
+                    att_type = event.attachments.get('attach1_type', '')
+                    if att_type == 'photo':
+                        att_str = f"photo{event.attachments['attach1']}"
+                        attachments.append(att_str)
 
                 if attachments:
                     set_horoscope_photo(attachments[0])
                     send_message(vk, user_id, "✅ Фото сохранено!", get_horoscope_keyboard())
                 else:
-                    send_message(vk, user_id, "❌ Не вижу фото. Попробуйте ещё раз.", get_horoscope_keyboard())
+                    send_message(vk, user_id, "❌ Не вижу фото.", get_horoscope_keyboard())
 
                 admin_state.pop(user_id, None)
                 continue
