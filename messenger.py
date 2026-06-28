@@ -122,6 +122,40 @@ def run_messenger():
                 send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
                 continue
 
+            if mode == "horoscope_photo":
+                if t in ["🔙 отмена", "❌ отмена"]:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
+                    continue
+
+                attachments = []
+                try:
+                    msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
+                    if msg and msg.get("items"):
+                        atts = msg["items"][0].get("attachments", [])
+                        for att in atts:
+                            att_type = att.get("type")
+                            att_obj = att.get(att_type, {})
+                            oid = att_obj.get("owner_id")
+                            iid = att_obj.get("id")
+                            ak = att_obj.get("access_key", "")
+                            if oid and iid:
+                                att_str = f"{att_type}{oid}_{iid}"
+                                if ak:
+                                    att_str += f"_{ak}"
+                                attachments.append(att_str)
+                except Exception as e:
+                    logging.error(f"Ошибка получения фото: {e}")
+
+                if attachments:
+                    set_horoscope_photo(attachments[0])
+                    send_message(vk, user_id, "✅ Фото сохранено!", get_horoscope_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Не вижу фото.", get_horoscope_keyboard())
+
+                admin_state.pop(user_id, None)
+                continue
+
             if t in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
                 send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
@@ -444,6 +478,44 @@ def run_messenger():
             elif t == "⏸️ выключить группу":
                 set_group_accept_enabled(False)
                 send_message(vk, user_id, "👥 Автоприём в группу выключен.", get_group_accept_keyboard())
+
+            # ─── ГОРОСКОП ───
+            elif t == "🔮 гороскоп":
+                status = "Включен ✅" if get_horoscope_enabled() else "Выключен ❌"
+                next_m = get_horoscope_next_monday()
+                if next_m:
+                    try:
+                        nm = datetime.fromisoformat(next_m)
+                        next_str = nm.strftime("%d.%m %H:%M")
+                    except:
+                        next_str = next_m
+                else:
+                    next_str = "не запланирован"
+                
+                msg = f"🔮 Гороскоп: {status}\nСледующий: {next_str}"
+                if get_horoscope_photo():
+                    msg += "\n📎 Фото: прикреплено"
+                send_message(vk, user_id, msg, get_horoscope_keyboard())
+
+            elif t == "▶️ включить гороскоп":
+                set_horoscope_enabled(True)
+                send_message(vk, user_id, "🔮 Гороскоп включен!", get_horoscope_keyboard())
+
+            elif t == "⏸️ выключить гороскоп":
+                set_horoscope_enabled(False)
+                send_message(vk, user_id, "🔮 Гороскоп выключен.", get_horoscope_keyboard())
+
+            elif t == "📋 промт гороскопа":
+                try:
+                    with open("horoscope_prompt.txt", "r", encoding="utf-8") as f:
+                        prompt_text = f.read()
+                except:
+                    prompt_text = "Файл не найден"
+                send_message(vk, user_id, f"📋 Промт гороскопа:\n\n{prompt_text}", get_horoscope_keyboard())
+
+            elif t == "🖼️ фото гороскопа":
+                admin_state[user_id] = {"mode": "horoscope_photo"}
+                send_message(vk, user_id, "📷 Пришлите фото для гороскопа:", get_cancel_keyboard())
 
             elif t == "🤖 ai-постер":
                 send_message(vk, user_id, "🤖 AI-постер:", get_ai_keyboard())
