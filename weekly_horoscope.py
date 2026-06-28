@@ -16,7 +16,6 @@ def save_horoscope_config(data):
     save_json(HOROSCOPE_CONFIG, data)
 
 def get_next_monday_9am():
-    """Возвращает timestamp ближайшего понедельника 9:00 МСК"""
     now = datetime.now() + timedelta(hours=3)
     days_until_monday = (7 - now.weekday()) % 7
     if days_until_monday == 0 and now.hour >= 9:
@@ -37,7 +36,6 @@ def run_weekly_horoscope():
     
     logging.info("🔮 Гороскоп запущен")
     
-    # Проверяем не первый ли запуск
     config = get_horoscope_config()
     if not config.get("next_monday"):
         config["next_monday"] = ""
@@ -54,7 +52,6 @@ def run_weekly_horoscope():
             now_ts = int((datetime.now() + timedelta(hours=3)).timestamp())
             next_monday_str = config.get("next_monday", "")
             
-            # Проверяем: есть ли запланированный пост и не пора ли создать новый
             need_new = False
             
             if not next_monday_str:
@@ -70,7 +67,6 @@ def run_weekly_horoscope():
             if need_new:
                 logging.info("🔮 Создаю новый гороскоп...")
                 
-                # Генерируем текст
                 prompt = load_horoscope_prompt()
                 text = generate_variants(prompt)
                 
@@ -79,41 +75,36 @@ def run_weekly_horoscope():
                     time.sleep(3600)
                     continue
                 
-                # Вычисляем ближайший понедельник
                 pub_time = get_next_monday_9am()
-                
-                # Публикуем отложенный пост
                 photo_id = config.get("photo_id", "")
-                attachments = photo_id if photo_id else None
+                logging.info(f"🔮 Фото для гороскопа: {photo_id if photo_id else 'не указано'}")
                 
                 result = vk_user.wall.post(
                     owner_id=-GROUP_ID,
                     message=text,
-                    attachments=attachments,
+                    attachments=photo_id if photo_id else None,
                     from_group=1,
                     publish_date=pub_time
                 )
                 
-                # Сохраняем дату
                 config["next_monday"] = datetime.fromtimestamp(pub_time).isoformat()
                 save_horoscope_config(config)
                 
                 pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
                 logging.info(f"🔮 Гороскоп запланирован на {pub_str}")
                 
-                # Уведомление админу
                 if ADMIN_ID:
                     try:
                         vk_group.messages.send(
                             user_id=ADMIN_ID,
-                            message=f"🔮 Гороскоп на неделю создан!\nЗапланирован на: {pub_str}",
+                            message=f"🔮 Гороскоп на неделю создан!\nЗапланирован на: {pub_str}" + (" 📎" if photo_id else ""),
                             random_id=0,
                             group_id=GROUP_ID
                         )
                     except Exception as e:
                         logging.error(f"Ошибка уведомления: {e}")
             
-            time.sleep(3600)  # Проверка раз в час
+            time.sleep(3600)
             
         except Exception as e:
             logging.error(f"🔮 Ошибка: {e}")
