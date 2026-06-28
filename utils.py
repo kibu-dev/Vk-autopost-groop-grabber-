@@ -27,7 +27,6 @@ GROUP_ACCEPT_STATE_FILE = "group_accept_state.json"
 GROUP_ACCEPT_STATS_FILE = "group_accept_stats.json"
 MODERATION_FILE = "moderation.json"
 
-# Блокировки для потокобезопасной записи
 _file_locks = {}
 
 def _get_lock(filepath):
@@ -312,6 +311,30 @@ def add_group_accept_stat():
     data["accepted"] += 1
     save_json(GROUP_ACCEPT_STATS_FILE, data)
 
+# ─── Гороскоп ───
+
+def get_horoscope_enabled():
+    config = load_json("horoscope_config.json", {"enabled": False, "photo_id": "", "next_monday": ""})
+    return config.get("enabled", False)
+
+def set_horoscope_enabled(enabled):
+    config = load_json("horoscope_config.json", {"enabled": False, "photo_id": "", "next_monday": ""})
+    config["enabled"] = enabled
+    save_json("horoscope_config.json", config)
+
+def set_horoscope_photo(photo_id):
+    config = load_json("horoscope_config.json", {"enabled": False, "photo_id": "", "next_monday": ""})
+    config["photo_id"] = photo_id
+    save_json("horoscope_config.json", config)
+
+def get_horoscope_photo():
+    config = load_json("horoscope_config.json", {"enabled": False, "photo_id": "", "next_monday": ""})
+    return config.get("photo_id", "")
+
+def get_horoscope_next_monday():
+    config = load_json("horoscope_config.json", {"enabled": False, "photo_id": "", "next_monday": ""})
+    return config.get("next_monday", "")
+
 # ─── Проверки ───
 
 def is_spam(text):
@@ -321,13 +344,11 @@ def is_spam(text):
     return any(w in t for w in words)
 
 def contains_any_link(text):
-    """Проверяет наличие ссылок (только явные URL, не ложные срабатывания)"""
     if not text:
         return False
-    # Только явные URL
     patterns = [
-        r'https?://[^\s]+',           # http/https ссылки
-        r'www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}',  # www.домен
+        r'https?://[^\s]+',
+        r'www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}',
     ]
     for p in patterns:
         if re.search(p, text, re.IGNORECASE):
@@ -374,7 +395,7 @@ def send_message(vk, user_id, text, keyboard=None):
                          keyboard=keyboard.get_keyboard() if keyboard else None)
     except Exception as e: print(f"Ошибка отправки: {e}")
 
-# ─── Модерация (в JSON) ───
+# ─── Модерация ───
 
 def get_moderation_posts():
     return load_json(MODERATION_FILE, {"posts": []})["posts"]
