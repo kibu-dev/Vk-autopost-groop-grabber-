@@ -10,17 +10,16 @@ from auto_liker import run_auto_liker
 from online_keeper import run_online_keeper
 from friend_acceptor import run_friend_acceptor
 from group_acceptor import run_group_acceptor
+from weekly_horoscope import run_weekly_horoscope
 
 # Настройка логирования
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Вывод в консоль (Bothost видит)
 console = logging.StreamHandler(sys.stdout)
 console.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S'))
 logger.addHandler(console)
 
-# Вывод в файл с ротацией
 file_handler = RotatingFileHandler('bot.log', maxBytes=2*1024*1024, backupCount=3, encoding='utf-8')
 file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
 logger.addHandler(file_handler)
@@ -38,5 +37,6 @@ if __name__ == "__main__":
     threading.Thread(target=run_online_keeper, daemon=True).start()
     threading.Thread(target=run_friend_acceptor, daemon=True).start()
     threading.Thread(target=run_group_acceptor, daemon=True).start()
+    threading.Thread(target=run_weekly_horoscope, daemon=True).start()
 
     run_messenger()
