@@ -16,12 +16,14 @@ def save_horoscope_config(data):
     save_json(HOROSCOPE_CONFIG, data)
 
 def get_next_monday_9am():
-    now = datetime.now() + timedelta(hours=3)
-    days_until_monday = (7 - now.weekday()) % 7
-    if days_until_monday == 0 and now.hour >= 9:
+    """Возвращает timestamp ближайшего понедельника 9:00 МСК (6:00 UTC)"""
+    now_utc = datetime.now()
+    now_msk = now_utc + timedelta(hours=3)
+    days_until_monday = (7 - now_msk.weekday()) % 7
+    if days_until_monday == 0 and now_msk.hour >= 9:
         days_until_monday = 7
-    next_monday = now.replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
-    return int(next_monday.timestamp())
+    target_utc = (now_utc + timedelta(days=days_until_monday)).replace(hour=6, minute=0, second=0, microsecond=0)
+    return int(target_utc.timestamp())
 
 def load_horoscope_prompt():
     try:
