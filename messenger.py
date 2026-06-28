@@ -129,7 +129,7 @@ def run_messenger():
                 photo_saved = False
 
                 try:
-                    msg = vk_user.messages.getById(message_ids=event.message_id)
+                    msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
                     if msg and msg.get("items"):
                         atts = msg["items"][0].get("attachments", [])
                         for att in atts:
