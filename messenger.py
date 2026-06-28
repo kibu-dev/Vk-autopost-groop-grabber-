@@ -49,11 +49,8 @@ def run_messenger():
                             att_obj = att.get(att_type, {})
                             oid = att_obj.get("owner_id")
                             iid = att_obj.get("id")
-                            ak = att_obj.get("access_key", "")
                             if oid and iid:
                                 att_str = f"{att_type}{oid}_{iid}"
-                                if ak:
-                                    att_str += f"_{ak}"
                                 attachments.append(att_str)
                 except Exception as e:
                     logging.error(f"Ошибка получения вложений: {e}")
@@ -139,11 +136,8 @@ def run_messenger():
                                 att_obj = att.get(att_type, {})
                                 oid = att_obj.get("owner_id")
                                 iid = att_obj.get("id")
-                                ak = att_obj.get("access_key", "")
                                 if oid and iid:
                                     att_str = f"photo{oid}_{iid}"
-                                    if ak:
-                                        att_str += f"_{ak}"
                                     attachments.append(att_str)
                 except Exception as e:
                     logging.error(f"Ошибка получения фото: {e}")
