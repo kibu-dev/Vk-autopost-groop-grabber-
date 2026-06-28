@@ -1,6 +1,7 @@
 import re
 import logging
 import vk_api
+import requests as req
 from vk_api.longpoll import VkLongPoll, VkEventType
 from datetime import datetime
 from config import *
@@ -125,7 +126,7 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
 
-                attachments = []
+                photo_saved = False
 
                 try:
                     msg = vk_user.messages.getById(message_ids=event.message_id)
@@ -135,25 +136,35 @@ def run_messenger():
                             att_type = att.get("type")
                             if att_type == "photo":
                                 att_obj = att.get(att_type, {})
-                                oid = att_obj.get("owner_id")
-                                iid = att_obj.get("id")
-                                if oid and iid:
-                                    att_str = f"photo{oid}_{iid}"
-                                    attachments.append(att_str)
+                                sizes = att_obj.get("sizes", [])
+                                if sizes:
+                                    biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                                    photo_url = biggest.get("url")
+                                    if photo_url:
+                                        img_data = req.get(photo_url).content
+                                        upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                                        files = {'photo': ('horoscope.jpg', img_data, 'image/jpeg')}
+                                        up = req.post(upload_server['upload_url'], files=files).json()
+                                        saved = vk_user.photos.saveWallPhoto(
+                                            photo=up['photo'],
+                                            server=up['server'],
+                                            hash=up['hash'],
+                                            group_id=GROUP_ID
+                                        )
+                                        if saved:
+                                            photo = saved[0]
+                                            new_id = f"photo{photo['owner_id']}_{photo['id']}"
+                                            set_horoscope_photo(new_id)
+                                            photo_saved = True
+                                            logging.info(f"HOROSCOPE PHOTO SAVED: {new_id}")
+                                        break
                 except Exception as e:
-                    logging.error(f"HOROSCOPE API ERROR: {e}")
+                    logging.error(f"HOROSCOPE UPLOAD ERROR: {e}")
 
-                if not attachments and hasattr(event, 'attachments') and event.attachments:
-                    att_type = event.attachments.get('attach1_type', '')
-                    if att_type == 'photo':
-                        att_str = f"photo{event.attachments['attach1']}"
-                        attachments.append(att_str)
-
-                if attachments:
-                    set_horoscope_photo(attachments[0])
-                    send_message(vk, user_id, "✅ Фото сохранено!", get_horoscope_keyboard())
+                if photo_saved:
+                    send_message(vk, user_id, "✅ Фото сохранено и загружено!", get_horoscope_keyboard())
                 else:
-                    send_message(vk, user_id, "❌ Не вижу фото.", get_horoscope_keyboard())
+                    send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_horoscope_keyboard())
 
                 admin_state.pop(user_id, None)
                 continue
