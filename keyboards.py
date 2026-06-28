@@ -109,6 +109,8 @@ def get_automation_keyboard():
     k.add_button("🤝 Приём друзей", VkKeyboardColor.PRIMARY)
     k.add_button("👥 Приём в группу", VkKeyboardColor.PRIMARY)
     k.add_line()
+    k.add_button("🔮 Гороскоп", VkKeyboardColor.PRIMARY)
+    k.add_line()
     k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
 
@@ -158,6 +160,17 @@ def get_group_accept_keyboard():
     k = VkKeyboard(one_time=False)
     k.add_button("▶️ Включить группу", VkKeyboardColor.POSITIVE)
     k.add_button("⏸️ Выключить группу", VkKeyboardColor.NEGATIVE)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_horoscope_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("▶️ Включить гороскоп", VkKeyboardColor.POSITIVE)
+    k.add_button("⏸️ Выключить гороскоп", VkKeyboardColor.NEGATIVE)
+    k.add_line()
+    k.add_button("📋 Промт гороскопа", VkKeyboardColor.PRIMARY)
+    k.add_button("🖼️ Фото гороскопа", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
