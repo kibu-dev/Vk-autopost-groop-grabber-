@@ -10,7 +10,7 @@ HOROSCOPE_CONFIG = "horoscope_config.json"
 HOROSCOPE_PROMPT = "horoscope_prompt.txt"
 
 def get_horoscope_config():
-    return load_json(HOROSCOPE_CONFIG, {"enabled": False, "photo_id": "", "next_monday": "", "text": ""})
+    return load_json(HOROSCOPE_CONFIG, {"enabled": False, "photo_id": "", "next_monday": "", "text": "", "post_id": 0})
 
 def save_horoscope_config(data):
     save_json(HOROSCOPE_CONFIG, data)
@@ -36,6 +36,15 @@ def create_horoscope():
     """Создаёт новый гороскоп. Возвращает True если успешно."""
     config = get_horoscope_config()
     
+    # Удаляем старый пост если есть
+    old_post_id = config.get("post_id")
+    if old_post_id:
+        try:
+            vk_user.wall.delete(owner_id=-GROUP_ID, post_id=old_post_id)
+            logging.info(f"🔮 Удалён старый гороскоп #{old_post_id}")
+        except:
+            pass
+    
     logging.info("🔮 Создаю новый гороскоп...")
     
     prompt = load_horoscope_prompt()
@@ -58,6 +67,7 @@ def create_horoscope():
                 from_group=1,
                 publish_date=pub_time
             )
+            config["post_id"] = result["post_id"]
             break
         except Exception as e:
             if "214" in str(e) or "already scheduled" in str(e):
@@ -68,7 +78,7 @@ def create_horoscope():
                 return False
     
     config["next_monday"] = datetime.fromtimestamp(pub_time).isoformat()
-    config["text"] = text[:1000]
+    config["text"] = text[:2500]
     save_horoscope_config(config)
     
     pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
