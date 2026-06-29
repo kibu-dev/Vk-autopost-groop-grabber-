@@ -145,24 +145,24 @@ def run_messenger():
                                         upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
                                         files = {'photo': ('horoscope.jpg', img_data, 'image/jpeg')}
                                         up = req.post(upload_server['upload_url'], files=files).json()
-                                        saved = vk_user.photos.saveWallPhoto(
-                                            photo=up['photo'],
-                                            server=up['server'],
-                                            hash=up['hash'],
-                                            group_id=GROUP_ID
-                                        )
-                                        if saved:
-                                            photo = saved[0]
-                                            new_id = f"photo{photo['owner_id']}_{photo['id']}"
-                                            set_horoscope_photo(new_id)
-                                            photo_saved = True
-                                            logging.info(f"HOROSCOPE PHOTO SAVED: {new_id}")
+                                        if 'photo' in up and up['photo']:
+                                            saved = vk_user.photos.saveWallPhoto(
+                                                photo=up['photo'],
+                                                server=up['server'],
+                                                hash=up['hash'],
+                                                group_id=GROUP_ID
+                                            )
+                                            if saved:
+                                                photo = saved[0]
+                                                new_id = f"photo{photo['owner_id']}_{photo['id']}"
+                                                set_horoscope_photo(new_id)
+                                                photo_saved = True
                                         break
                 except Exception as e:
                     logging.error(f"HOROSCOPE UPLOAD ERROR: {e}")
 
                 if photo_saved:
-                    send_message(vk, user_id, "✅ Фото сохранено и загружено!", get_horoscope_keyboard())
+                    send_message(vk, user_id, "✅ Фото сохранено!", get_horoscope_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_horoscope_keyboard())
 
@@ -504,10 +504,57 @@ def run_messenger():
                 else:
                     next_str = "не запланирован"
                 
-                msg = f"🔮 Гороскоп: {status}\nСледующий: {next_str}"
-                if get_horoscope_photo():
-                    msg += "\n📎 Фото: прикреплено"
+                config = load_json("horoscope_config.json", {})
+                text_preview = config.get("text", "")
+                photo_id = config.get("photo_id", "")
+                
+                msg = f"🔮 Гороскоп: {status}\nСледующий: {next_str}\n"
+                if text_preview:
+                    msg += f"\n📝 Текст:\n{text_preview[:500]}...\n"
+                
                 send_message(vk, user_id, msg, get_horoscope_keyboard())
+                
+                if photo_id:
+                    try:
+                        vk.messages.send(
+                            user_id=user_id,
+                            message="🖼️ Текущее фото:",
+                            attachment=photo_id,
+                            random_id=0
+                        )
+                    except:
+                        pass
+
+            elif t == "🗑 удалить и пересоздать":
+                config = load_json("horoscope_config.json", {})
+                config["next_monday"] = ""
+                save_json("horoscope_config.json", config)
+                send_message(vk, user_id, "🔄 Создаю новый гороскоп...")
+                from weekly_horoscope import create_horoscope
+                if create_horoscope():
+                    config = load_json("horoscope_config.json", {})
+                    status = "Включен ✅" if get_horoscope_enabled() else "Выключен ❌"
+                    next_m = config.get("next_monday", "")
+                    if next_m:
+                        try:
+                            nm = datetime.fromisoformat(next_m)
+                            next_str = nm.strftime("%d.%m %H:%M")
+                        except:
+                            next_str = next_m
+                    else:
+                        next_str = "не запланирован"
+                    text_preview = config.get("text", "")
+                    photo_id = config.get("photo_id", "")
+                    msg = f"🔮 Гороскоп: {status}\nСледующий: {next_str}\n"
+                    if text_preview:
+                        msg += f"\n📝 Текст:\n{text_preview[:500]}...\n"
+                    send_message(vk, user_id, msg, get_horoscope_keyboard())
+                    if photo_id:
+                        try:
+                            vk.messages.send(user_id=user_id, message="🖼️ Текущее фото:", attachment=photo_id, random_id=0)
+                        except: pass
+                else:
+                    send_message(vk, user_id, "❌ Ошибка создания.", get_horoscope_keyboard())
 
             elif t == "▶️ включить гороскоп":
                 set_horoscope_enabled(True)
@@ -525,9 +572,9 @@ def run_messenger():
                     prompt_text = "Файл не найден"
                 send_message(vk, user_id, f"📋 Промт гороскопа:\n\n{prompt_text}", get_horoscope_keyboard())
 
-            elif t == "🖼️ фото гороскопа":
+            elif t == "🖼️ сменить фото":
                 admin_state[user_id] = {"mode": "horoscope_photo"}
-                send_message(vk, user_id, "📷 Пришлите фото для гороскопа:", get_cancel_keyboard())
+                send_message(vk, user_id, "📷 Пришлите новое фото для гороскопа:", get_cancel_keyboard())
 
             elif t == "🤖 ai-постер":
                 send_message(vk, user_id, "🤖 AI-постер:", get_ai_keyboard())
