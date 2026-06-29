@@ -166,11 +166,13 @@ def get_group_accept_keyboard():
 
 def get_horoscope_keyboard():
     k = VkKeyboard(one_time=False)
+    k.add_button("🗑 Удалить и пересоздать", VkKeyboardColor.NEGATIVE)
+    k.add_line()
     k.add_button("▶️ Включить гороскоп", VkKeyboardColor.POSITIVE)
     k.add_button("⏸️ Выключить гороскоп", VkKeyboardColor.NEGATIVE)
     k.add_line()
+    k.add_button("🖼️ Сменить фото", VkKeyboardColor.PRIMARY)
     k.add_button("📋 Промт гороскопа", VkKeyboardColor.PRIMARY)
-    k.add_button("🖼️ Фото гороскопа", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
