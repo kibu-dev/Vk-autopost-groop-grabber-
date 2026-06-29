@@ -506,36 +506,15 @@ def run_messenger():
                     next_str = "не запланирован"
                 
                 text_preview = config.get("text", "")
-                photo_id = config.get("photo_id", "")
                 
                 msg = f"🔮 Гороскоп: {status}\nСледующий: {next_str}"
                 if text_preview:
                     msg += f"\n\n📝 Текст:\n{text_preview[:1500]}"
                 
                 send_message(vk, user_id, msg, get_horoscope_keyboard())
-                
-                if photo_id:
-                    try:
-                        vk.messages.send(
-                            user_id=user_id,
-                            message="🖼️ Текущее фото гороскопа:",
-                            attachment=photo_id,
-                            random_id=0
-                        )
-                    except Exception as e:
-                        send_message(vk, user_id, f"❌ Не удалось показать фото: {e}", get_horoscope_keyboard())
 
-            elif t == "🗑 удалить и пересоздать":
+            elif t == "удалить и пересоздать":
                 config = load_json("horoscope_config.json", {})
-                # Удаляем старый пост из отложки
-                try:
-                    scheduled = get_scheduled_posts()
-                    for p in scheduled:
-                        if "гороскоп" in p.get("text", "").lower() or "#гороскоп" in p.get("text", ""):
-                            vk_user.wall.delete(owner_id=-GROUP_ID, post_id=p.get("post_id", 0))
-                except:
-                    pass
-                
                 config["next_monday"] = ""
                 save_json("horoscope_config.json", config)
                 send_message(vk, user_id, "🔄 Создаю новый гороскоп...")
