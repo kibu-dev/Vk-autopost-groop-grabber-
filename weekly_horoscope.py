@@ -10,7 +10,7 @@ HOROSCOPE_CONFIG = "horoscope_config.json"
 HOROSCOPE_PROMPT = "horoscope_prompt.txt"
 
 def get_horoscope_config():
-    return load_json(HOROSCOPE_CONFIG, {"enabled": False, "photo_id": "", "next_monday": ""})
+    return load_json(HOROSCOPE_CONFIG, {"enabled": False, "photo_id": "", "next_monday": "", "text": ""})
 
 def save_horoscope_config(data):
     save_json(HOROSCOPE_CONFIG, data)
@@ -32,7 +32,63 @@ def load_horoscope_prompt():
     except:
         return "Напиши гороскоп на неделю для всех знаков зодиака."
 
+def create_horoscope():
+    """Создаёт новый гороскоп. Возвращает True если успешно."""
+    config = get_horoscope_config()
+    
+    logging.info("🔮 Создаю новый гороскоп...")
+    
+    prompt = load_horoscope_prompt()
+    text = generate_variants(prompt)
+    
+    if not text:
+        logging.error("🔮 ИИ не сгенерировал гороскоп")
+        return False
+    
+    pub_time = get_next_monday_9am()
+    photo_id = config.get("photo_id", "")
+    logging.info(f"🔮 Фото: {'есть' if photo_id else 'нет'}")
+    
+    for attempt in range(24):
+        try:
+            result = vk_user.wall.post(
+                owner_id=-GROUP_ID,
+                message=text,
+                attachments=photo_id if photo_id else None,
+                from_group=1,
+                publish_date=pub_time
+            )
+            break
+        except Exception as e:
+            if "214" in str(e) or "already scheduled" in str(e):
+                pub_time += 3600
+                logging.info(f"🔮 Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
+            else:
+                logging.error(f"🔮 Ошибка публикации: {e}")
+                return False
+    
+    config["next_monday"] = datetime.fromtimestamp(pub_time).isoformat()
+    config["text"] = text[:1000]
+    save_horoscope_config(config)
+    
+    pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
+    logging.info(f"🔮 Запланирован на {pub_str}")
+    
+    if ADMIN_ID:
+        try:
+            vk_group.messages.send(
+                user_id=ADMIN_ID,
+                message=f"🔮 Гороскоп создан!\nЗапланирован на: {pub_str}" + (" 📎" if photo_id else ""),
+                random_id=0,
+                group_id=GROUP_ID
+            )
+        except Exception as e:
+            logging.error(f"Ошибка уведомления: {e}")
+    
+    return True
+
 def run_weekly_horoscope():
+    global vk_user, vk_group
     vk_user = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
     vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
     
@@ -67,44 +123,7 @@ def run_weekly_horoscope():
                     need_new = True
             
             if need_new:
-                logging.info("🔮 Создаю новый гороскоп...")
-                
-                prompt = load_horoscope_prompt()
-                text = generate_variants(prompt)
-                
-                if not text:
-                    logging.error("🔮 ИИ не сгенерировал гороскоп")
-                    time.sleep(3600)
-                    continue
-                
-                pub_time = get_next_monday_9am()
-                photo_id = config.get("photo_id", "")
-                logging.info(f"🔮 Фото для гороскопа: {photo_id if photo_id else 'не указано'}")
-                
-                result = vk_user.wall.post(
-                    owner_id=-GROUP_ID,
-                    message=text,
-                    attachments=photo_id if photo_id else None,
-                    from_group=1,
-                    publish_date=pub_time
-                )
-                
-                config["next_monday"] = datetime.fromtimestamp(pub_time).isoformat()
-                save_horoscope_config(config)
-                
-                pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
-                logging.info(f"🔮 Гороскоп запланирован на {pub_str}")
-                
-                if ADMIN_ID:
-                    try:
-                        vk_group.messages.send(
-                            user_id=ADMIN_ID,
-                            message=f"🔮 Гороскоп на неделю создан!\nЗапланирован на: {pub_str}" + (" 📎" if photo_id else ""),
-                            random_id=0,
-                            group_id=GROUP_ID
-                        )
-                    except Exception as e:
-                        logging.error(f"Ошибка уведомления: {e}")
+                create_horoscope()
             
             time.sleep(3600)
             
