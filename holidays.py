@@ -7,6 +7,7 @@ from ai_poster import generate_variants
 
 HOLIDAYS_CONFIG = "holidays_config.json"
 HOLIDAY_PROMPT_FILE = "holiday_prompt.txt"
+HOLIDAY_LIST_PROMPT_FILE = "holidays_list_prompt.txt"
 
 def get_holidays_config():
     return load_json(HOLIDAYS_CONFIG, {
@@ -29,6 +30,13 @@ def load_holiday_prompt():
     except:
         return "Напиши тёплое поздравление с праздником «{name}» для подписчиков группы."
 
+def load_holiday_list_prompt():
+    try:
+        with open(HOLIDAY_LIST_PROMPT_FILE, "r", encoding="utf-8") as f:
+            return f.read()
+    except:
+        return "Перечисли праздники России на {month} {year}."
+
 def generate_holidays_list():
     """Запрашивает у ИИ список праздников на текущий месяц"""
     now = datetime.now() + timedelta(hours=3)
@@ -39,14 +47,7 @@ def generate_holidays_list():
     }
     month_ru = months_ru.get(now.strftime("%B").lower(), now.strftime("%B"))
     
-    prompt = f"""Перечисли популярные праздники России на {month_ru} {now.year} года.
-Формат строго: дата и название, каждый с новой строки.
-Только праздники, которые отмечаются в России.
-Пример:
-8 июля — День семьи, любви и верности
-20 июля — Международный день торта
-
-Дай не меньше 5 праздников."""
+    prompt = load_holiday_list_prompt().replace("{month}", month_ru).replace("{year}", str(now.year))
     
     result = generate_variants(prompt)
     if not result:
@@ -60,7 +61,8 @@ def generate_holidays_list():
             if len(parts) == 2:
                 date_str = parts[0].strip()
                 name = parts[1].strip()
-                holidays.append({"date": date_str, "name": name})
+                if name and len(name) > 3:
+                    holidays.append({"date": date_str, "name": name})
     
     return holidays
 
