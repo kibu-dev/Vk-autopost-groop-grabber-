@@ -33,13 +33,13 @@ def load_prompt():
     except:
         return "Напиши пост на тему: {text}"
 
-def generate_variants(text):
+def generate_text(prompt):
+    """Отправляет прямой запрос к ИИ (без prompt.txt)"""
     if not OPENROUTER_API_KEY:
-        ai_log("Нет API ключа OpenRouter")
+        ai_log("Нет API ключа")
         return None
     
-    prompt = load_prompt().replace("{text}", text)
-    ai_log(f"Запрос текста: {text[:100]}")
+    ai_log(f"Прямой запрос: {prompt[:100]}")
     
     try:
         response = requests.post(
@@ -51,7 +51,7 @@ def generate_variants(text):
             json={
                 "model": "google/gemini-2.5-flash-lite",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 2000
+                "max_tokens": 1500
             },
             timeout=60
         )
@@ -69,6 +69,15 @@ def generate_variants(text):
     except Exception as e:
         ai_log(f"Исключение: {str(e)}")
         return None
+
+def generate_variants(text):
+    """Генерирует текст через prompt.txt (для AI-постера, гороскопа)"""
+    if not OPENROUTER_API_KEY:
+        ai_log("Нет API ключа OpenRouter")
+        return None
+    
+    prompt = load_prompt().replace("{text}", text)
+    return generate_text(prompt)
 
 def parse_variants(result):
     try:
