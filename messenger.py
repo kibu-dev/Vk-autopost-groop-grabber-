@@ -8,6 +8,10 @@ from config import *
 from utils import *
 from keyboards import *
 from ai_poster import generate_variants, parse_variants, load_prompt, ai_log
+from holidays import (
+    get_holidays_config, save_holidays_config, generate_holidays_list,
+    get_holiday_publish_time, create_holiday_post, generate_holiday_text
+)
 
 waiting_support = set()
 selected_post = {}
@@ -34,6 +38,7 @@ def run_messenger():
             mode = state.get("mode")
             t = text.lower()
 
+            # ─── AI-ПОСТЕР ───
             if mode == "ai_post":
                 if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
@@ -120,6 +125,7 @@ def run_messenger():
                 send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
                 continue
 
+            # ─── ГОРОСКОП ФОТО ───
             if mode == "horoscope_photo":
                 if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
@@ -127,7 +133,6 @@ def run_messenger():
                     continue
 
                 photo_saved = False
-
                 try:
                     msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
                     if msg and msg.get("items"):
@@ -147,10 +152,7 @@ def run_messenger():
                                         up = req.post(upload_server['upload_url'], files=files).json()
                                         if 'photo' in up and up['photo']:
                                             saved = vk_user.photos.saveWallPhoto(
-                                                photo=up['photo'],
-                                                server=up['server'],
-                                                hash=up['hash'],
-                                                group_id=GROUP_ID
+                                                photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
                                             )
                                             if saved:
                                                 photo = saved[0]
@@ -165,10 +167,73 @@ def run_messenger():
                     send_message(vk, user_id, "✅ Фото сохранено!", get_horoscope_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_horoscope_keyboard())
-
                 admin_state.pop(user_id, None)
                 continue
 
+            # ─── ПРАЗДНИКИ ФОТО ───
+            if mode == "holiday_photo":
+                if t in ["🔙 отмена", "❌ отмена"]:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
+                    continue
+
+                photo_saved = False
+                try:
+                    msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
+                    if msg and msg.get("items"):
+                        atts = msg["items"][0].get("attachments", [])
+                        for att in atts:
+                            att_type = att.get("type")
+                            if att_type == "photo":
+                                att_obj = att.get(att_type, {})
+                                sizes = att_obj.get("sizes", [])
+                                if sizes:
+                                    biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                                    photo_url = biggest.get("url")
+                                    if photo_url:
+                                        img_data = req.get(photo_url).content
+                                        upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                                        files = {'photo': ('holiday.jpg', img_data, 'image/jpeg')}
+                                        up = req.post(upload_server['upload_url'], files=files).json()
+                                        if 'photo' in up and up['photo']:
+                                            saved = vk_user.photos.saveWallPhoto(
+                                                photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
+                                            )
+                                            if saved:
+                                                photo = saved[0]
+                                                new_id = f"photo{photo['owner_id']}_{photo['id']}"
+                                                config = get_holidays_config()
+                                                config["photo_id"] = new_id
+                                                save_holidays_config(config)
+                                                photo_saved = True
+                                        break
+                except Exception as e:
+                    logging.error(f"HOLIDAY UPLOAD ERROR: {e}")
+
+                if photo_saved:
+                    send_message(vk, user_id, "✅ Фото сохранено!", get_holidays_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_holidays_keyboard())
+                admin_state.pop(user_id, None)
+                continue
+
+            # ─── ПРАЗДНИКИ СВОЙ ТЕКСТ ───
+            if mode == "holiday_custom":
+                if t in ["🔙 отмена", "❌ отмена"]:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
+                    continue
+
+                config = get_holidays_config()
+                config["generated_text"] = text
+                save_holidays_config(config)
+                admin_state.pop(user_id, None)
+
+                msg = f"📝 Ваш текст:\n\n{text[:500]}...\n\nЗапланировать на {config.get('selected_date', '?')}?"
+                send_message(vk, user_id, msg, get_holiday_confirm_keyboard())
+                continue
+
+            # ─── ОБЩИЕ ───
             if t in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
                 send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
@@ -504,13 +569,10 @@ def run_messenger():
                         next_str = next_m
                 else:
                     next_str = "не запланирован"
-                
                 text_preview = config.get("text", "")
-                
                 msg = f"🔮 Гороскоп: {status}\nСледующий: {next_str}"
                 if text_preview:
-                    msg += f"\n\n📝 Текст:\n{text_preview[:1500]}"
-                
+                    msg += f"\n\n📝 Текст:\n{text_preview[:2500]}"
                 send_message(vk, user_id, msg, get_horoscope_keyboard())
 
             elif t == "удалить и пересоздать":
@@ -518,7 +580,6 @@ def run_messenger():
                 config["next_monday"] = ""
                 save_json("horoscope_config.json", config)
                 send_message(vk, user_id, "🔄 Создаю новый гороскоп...")
-                
                 from weekly_horoscope import create_horoscope
                 if create_horoscope():
                     config = load_json("horoscope_config.json", {})
@@ -535,7 +596,7 @@ def run_messenger():
                     text_preview = config.get("text", "")
                     msg = f"✅ Готово!\n🔮 Гороскоп: {status}\nСледующий: {next_str}"
                     if text_preview:
-                        msg += f"\n\n📝 Текст:\n{text_preview[:1500]}"
+                        msg += f"\n\n📝 Текст:\n{text_preview[:2500]}"
                     send_message(vk, user_id, msg, get_horoscope_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Ошибка создания.", get_horoscope_keyboard())
@@ -559,6 +620,122 @@ def run_messenger():
             elif t == "🖼️ сменить фото":
                 admin_state[user_id] = {"mode": "horoscope_photo"}
                 send_message(vk, user_id, "📷 Пришлите новое фото для гороскопа:", get_cancel_keyboard())
+
+            # ─── ПРАЗДНИКИ ───
+            elif t == "🎉 праздники":
+                config = get_holidays_config()
+                if not config.get("holidays_list"):
+                    send_message(vk, user_id, "⏳ Загружаю список праздников через ИИ...")
+                    holidays = generate_holidays_list()
+                    if holidays:
+                        config["holidays_list"] = holidays
+                        config["current_index"] = 0
+                        save_holidays_config(config)
+                    else:
+                        send_message(vk, user_id, "❌ Не удалось загрузить список.", get_admin_main_keyboard())
+                        continue
+
+                holidays = config.get("holidays_list", [])
+                idx = config.get("current_index", 0)
+                if 0 <= idx < len(holidays):
+                    h = holidays[idx]
+                    config["selected_name"] = h["name"]
+                    config["selected_date"] = h["date"]
+                    save_holidays_config(config)
+                    msg = f"🎉 Праздник ({idx+1}/{len(holidays)}):\n📅 {h['date']} — {h['name']}"
+                else:
+                    msg = "📭 Список пуст."
+                send_message(vk, user_id, msg, get_holidays_keyboard())
+
+            elif t == "⬅️ предыдущий":
+                config = get_holidays_config()
+                holidays = config.get("holidays_list", [])
+                if holidays:
+                    idx = config.get("current_index", 0)
+                    idx = (idx - 1) % len(holidays)
+                    config["current_index"] = idx
+                    h = holidays[idx]
+                    config["selected_name"] = h["name"]
+                    config["selected_date"] = h["date"]
+                    save_holidays_config(config)
+                    msg = f"🎉 Праздник ({idx+1}/{len(holidays)}):\n📅 {h['date']} — {h['name']}"
+                    send_message(vk, user_id, msg, get_holidays_keyboard())
+                else:
+                    send_message(vk, user_id, "📭 Список пуст.", get_holidays_keyboard())
+
+            elif t == "➡️ следующий":
+                config = get_holidays_config()
+                holidays = config.get("holidays_list", [])
+                if holidays:
+                    idx = config.get("current_index", 0)
+                    idx = (idx + 1) % len(holidays)
+                    config["current_index"] = idx
+                    h = holidays[idx]
+                    config["selected_name"] = h["name"]
+                    config["selected_date"] = h["date"]
+                    save_holidays_config(config)
+                    msg = f"🎉 Праздник ({idx+1}/{len(holidays)}):\n📅 {h['date']} — {h['name']}"
+                    send_message(vk, user_id, msg, get_holidays_keyboard())
+                else:
+                    send_message(vk, user_id, "📭 Список пуст.", get_holidays_keyboard())
+
+            elif t == "✍️ создать поздравление":
+                config = get_holidays_config()
+                name = config.get("selected_name", "")
+                if not name:
+                    send_message(vk, user_id, "❌ Сначала выберите праздник.", get_holidays_keyboard())
+                    continue
+                admin_state[user_id] = {"mode": "holiday_photo"}
+                send_message(vk, user_id, f"📷 Пришлите фото для поздравления\nПраздник: {name}", get_cancel_keyboard())
+
+            elif t == "✅ опубликовать (праздник)":
+                config = get_holidays_config()
+                text = config.get("generated_text", "")
+                name = config.get("selected_name", "")
+                date_str = config.get("selected_date", "")
+                if not text:
+                    send_message(vk, user_id, "❌ Сначала сгенерируйте текст.", get_holidays_keyboard())
+                    continue
+                send_message(vk, user_id, f"⏳ Планирую на {date_str}...")
+                if create_holiday_post(vk_user):
+                    msg = f"✅ Поздравление запланировано!\n📅 {date_str} 10:00 — {name}"
+                    send_message(vk, user_id, msg, get_admin_main_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Ошибка публикации.", get_holidays_keyboard())
+
+            elif t == "✏️ написать свой текст":
+                admin_state[user_id] = {"mode": "holiday_custom"}
+                send_message(vk, user_id, "✏️ Напишите свой текст поздравления:", get_cancel_keyboard())
+
+            elif t == "🔄 сгенерировать ещё":
+                config = get_holidays_config()
+                name = config.get("selected_name", "")
+                send_message(vk, user_id, "⏳ Генерирую новый текст...")
+                text = generate_holiday_text(name)
+                if text:
+                    config["generated_text"] = text
+                    save_holidays_config(config)
+                    msg = f"🤖 Новый вариант:\n\n{text[:1500]}"
+                    send_message(vk, user_id, msg, get_holiday_confirm_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Ошибка генерации.", get_holidays_keyboard())
+
+            elif t == "🔄 обновить список":
+                send_message(vk, user_id, "⏳ Обновляю список праздников...")
+                holidays = generate_holidays_list()
+                if holidays:
+                    config = get_holidays_config()
+                    config["holidays_list"] = holidays
+                    config["current_index"] = 0
+                    save_holidays_config(config)
+                    h = holidays[0]
+                    config["selected_name"] = h["name"]
+                    config["selected_date"] = h["date"]
+                    save_holidays_config(config)
+                    msg = f"✅ Обновлено! ({len(holidays)} праздников)\n📅 {h['date']} — {h['name']}"
+                    send_message(vk, user_id, msg, get_holidays_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Не удалось обновить.", get_holidays_keyboard())
 
             elif t == "🤖 ai-постер":
                 send_message(vk, user_id, "🤖 AI-постер:", get_ai_keyboard())
