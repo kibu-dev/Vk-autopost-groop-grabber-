@@ -39,6 +39,7 @@ def get_admin_main_keyboard():
     k.add_button("⚙️ Автоматизация", VkKeyboardColor.SECONDARY)
     k.add_line()
     k.add_button("🤖 AI-постер", VkKeyboardColor.SECONDARY)
+    k.add_button("🎉 Праздники", VkKeyboardColor.SECONDARY)
     k.add_line()
     k.add_button("🔙 Пользовательское меню", VkKeyboardColor.SECONDARY)
     return k
@@ -202,5 +203,27 @@ def get_attach_keyboard():
     k.add_line()
     k.add_button("✅ Нет, опубликовать", VkKeyboardColor.POSITIVE)
     k.add_line()
+    k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
+    return k
+
+def get_holidays_keyboard():
+    k = VkKeyboard(one_time=False)
+    k.add_button("⬅️ Предыдущий", VkKeyboardColor.PRIMARY)
+    k.add_button("➡️ Следующий", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("✍️ Создать поздравление", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("🔄 Обновить список", VkKeyboardColor.SECONDARY)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_holiday_confirm_keyboard():
+    k = VkKeyboard(one_time=True)
+    k.add_button("✅ Опубликовать (праздник)", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button("✏️ Написать свой текст", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("🔄 Сгенерировать ещё", VkKeyboardColor.SECONDARY)
     k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
     return k
