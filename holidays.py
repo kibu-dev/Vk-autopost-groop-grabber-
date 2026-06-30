@@ -3,7 +3,7 @@ import vk_api
 from datetime import datetime, timedelta
 from config import *
 from utils import *
-from ai_poster import generate_variants
+from ai_poster import generate_text
 
 HOLIDAYS_CONFIG = "holidays_config.json"
 HOLIDAY_PROMPT_FILE = "holiday_prompt.txt"
@@ -49,7 +49,7 @@ def generate_holidays_list():
     
     prompt = load_holiday_list_prompt().replace("{month}", month_ru).replace("{year}", str(now.year))
     
-    result = generate_variants(prompt)
+    result = generate_text(prompt)
     if not result:
         return []
     
@@ -122,4 +122,4 @@ def create_holiday_post(vk_user):
 def generate_holiday_text(name):
     """Генерирует текст поздравления через ИИ"""
     prompt = load_holiday_prompt().replace("{name}", name)
-    return generate_variants(prompt)
+    return generate_text(prompt)
