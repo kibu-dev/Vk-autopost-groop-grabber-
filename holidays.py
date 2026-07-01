@@ -100,31 +100,39 @@ def create_holiday_post(vk_user):
     text = config.get("generated_text", "")
     
     if not date_str or not text:
-        logging.error(f"🎉 Нет даты или текста: date={date_str}, text={bool(text)}")
+        logging.error(f"🎉 Нет даты или текста")
         return False
     
     pub_time = get_holiday_publish_time(date_str)
     logging.info(f"🎉 Праздник: {date_str} -> timestamp: {pub_time}, photo: {photo_id if photo_id else 'нет'}")
     
-    if pub_time == 0 or pub_time < int(datetime.now().timestamp()):
-        logging.error(f"🎉 Невалидная дата публикации: {pub_time}")
+    if pub_time == 0:
+        logging.error(f"🎉 Невалидная дата публикации")
         return False
     
-    try:
-        result = vk_user.wall.post(
-            owner_id=-GROUP_ID,
-            message=text,
-            attachments=photo_id if photo_id else None,
-            from_group=1,
-            publish_date=pub_time
-        )
-        pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
-        logging.info(f"🎉 Поздравление запланировано на {pub_str}")
-        add_scheduled_post(pub_time, text[:200], 0)
-        return True
-    except Exception as e:
-        logging.error(f"🎉 Ошибка публикации: {e}")
-        return False
+    for attempt in range(24):
+        try:
+            result = vk_user.wall.post(
+                owner_id=-GROUP_ID,
+                message=text,
+                attachments=photo_id if photo_id else None,
+                from_group=1,
+                publish_date=pub_time
+            )
+            pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
+            logging.info(f"🎉 Поздравление запланировано на {pub_str}")
+            add_scheduled_post(pub_time, text[:200], 0)
+            return True
+        except Exception as e:
+            if "214" in str(e) or "already scheduled" in str(e):
+                pub_time += 3600
+                logging.info(f"🎉 Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
+            else:
+                logging.error(f"🎉 Ошибка публикации: {e}")
+                return False
+    
+    logging.error(f"🎉 Не удалось найти свободное время")
+    return False
 
 def generate_holiday_text(name):
     """Генерирует текст поздравления через ИИ"""
