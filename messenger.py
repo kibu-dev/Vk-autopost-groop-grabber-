@@ -174,7 +174,7 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
 
-                attachments = []
+                photo_saved = False
                 try:
                     msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
                     if msg and msg.get("items"):
@@ -183,29 +183,45 @@ def run_messenger():
                             att_type = att.get("type")
                             if att_type == "photo":
                                 att_obj = att.get(att_type, {})
-                                oid = att_obj.get("owner_id")
-                                iid = att_obj.get("id")
-                                if oid and iid:
-                                    att_str = f"photo{oid}_{iid}"
-                                    attachments.append(att_str)
-                except:
-                    pass
+                                sizes = att_obj.get("sizes", [])
+                                if sizes:
+                                    biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                                    photo_url = biggest.get("url")
+                                    if photo_url:
+                                        img_data = req.get(photo_url).content
+                                        upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                                        files = {'photo': ('holiday.jpg', img_data, 'image/jpeg')}
+                                        up = req.post(upload_server['upload_url'], files=files).json()
+                                        if 'photo' in up and up['photo']:
+                                            saved = vk_user.photos.saveWallPhoto(
+                                                photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
+                                            )
+                                            if saved:
+                                                photo = saved[0]
+                                                new_id = f"photo{photo['owner_id']}_{photo['id']}"
+                                                config = get_holidays_config()
+                                                config["photo_id"] = new_id
+                                                save_holidays_config(config)
+                                                photo_saved = True
+                                        break
+                except Exception as e:
+                    logging.error(f"HOLIDAY UPLOAD ERROR: {e}")
 
-                config = get_holidays_config()
-                config["photo_id"] = ",".join(attachments) if attachments else ""
-                save_holidays_config(config)
-
-                name = config.get("selected_name", "")
-                send_message(vk, user_id, f"⏳ Генерирую поздравление для: {name}")
-                
-                text = generate_holiday_text(name)
-                if text:
-                    config["generated_text"] = text
-                    save_holidays_config(config)
-                    msg = f"🤖 Готовое поздравление:\n\n{text[:1500]}"
-                    send_message(vk, user_id, msg, get_holiday_confirm_keyboard())
+                if photo_saved:
+                    config = get_holidays_config()
+                    name = config.get("selected_name", "")
+                    send_message(vk, user_id, f"✅ Фото сохранено!\n⏳ Генерирую поздравление для: {name}")
+                    
+                    text = generate_holiday_text(name)
+                    if text:
+                        config["generated_text"] = text
+                        save_holidays_config(config)
+                        msg = f"🤖 Готовое поздравление:\n\n{text[:1500]}"
+                        send_message(vk, user_id, msg, get_holiday_confirm_keyboard())
+                    else:
+                        send_message(vk, user_id, "❌ Не удалось сгенерировать текст.", get_holidays_keyboard())
                 else:
-                    send_message(vk, user_id, "❌ Не удалось сгенерировать текст.", get_holidays_keyboard())
+                    send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_holidays_keyboard())
                 
                 admin_state.pop(user_id, None)
                 continue
