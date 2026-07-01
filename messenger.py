@@ -189,20 +189,42 @@ def run_messenger():
                                     photo_url = biggest.get("url")
                                     if photo_url:
                                         img_data = req.get(photo_url).content
-                                        upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
-                                        files = {'photo': ('holiday.jpg', img_data, 'image/jpeg')}
-                                        up = req.post(upload_server['upload_url'], files=files).json()
-                                        if 'photo' in up and up['photo']:
-                                            saved = vk_user.photos.saveWallPhoto(
-                                                photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
-                                            )
-                                            if saved:
-                                                photo = saved[0]
-                                                new_id = f"photo{photo['owner_id']}_{photo['id']}"
-                                                config = get_holidays_config()
-                                                config["photo_id"] = new_id
-                                                save_holidays_config(config)
-                                                photo_saved = True
+                                        try:
+                                            upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                                            files = {'photo': ('holiday.jpg', img_data, 'image/jpeg')}
+                                            up = req.post(upload_server['upload_url'], files=files).json()
+                                            if 'photo' in up and up['photo']:
+                                                saved = vk_user.photos.saveWallPhoto(
+                                                    photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
+                                                )
+                                                if saved:
+                                                    photo = saved[0]
+                                                    new_id = f"photo{photo['owner_id']}_{photo['id']}"
+                                                    config = get_holidays_config()
+                                                    config["photo_id"] = new_id
+                                                    save_holidays_config(config)
+                                                    photo_saved = True
+                                        except:
+                                            pass
+                                        
+                                        if not photo_saved:
+                                            try:
+                                                upload_server = vk_user.photos.getMessagesUploadServer(group_id=GROUP_ID)
+                                                files = {'photo': ('holiday.jpg', img_data, 'image/jpeg')}
+                                                up = req.post(upload_server['upload_url'], files=files).json()
+                                                if 'photo' in up and up['photo']:
+                                                    saved = vk_user.photos.saveMessagesPhoto(
+                                                        photo=up['photo'], server=up['server'], hash=up['hash']
+                                                    )
+                                                    if saved:
+                                                        photo = saved[0]
+                                                        new_id = f"photo{photo['owner_id']}_{photo['id']}"
+                                                        config = get_holidays_config()
+                                                        config["photo_id"] = new_id
+                                                        save_holidays_config(config)
+                                                        photo_saved = True
+                                            except:
+                                                pass
                                         break
                 except Exception as e:
                     logging.error(f"HOLIDAY UPLOAD ERROR: {e}")
@@ -221,7 +243,7 @@ def run_messenger():
                     else:
                         send_message(vk, user_id, "❌ Не удалось сгенерировать текст.", get_holidays_keyboard())
                 else:
-                    send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_holidays_keyboard())
+                    send_message(vk, user_id, "❌ Не удалось загрузить фото. Попробуйте ещё раз.", get_holidays_keyboard())
                 
                 admin_state.pop(user_id, None)
                 continue
