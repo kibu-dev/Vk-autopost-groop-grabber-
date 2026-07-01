@@ -49,7 +49,7 @@ def generate_text(prompt):
                 "Content-Type": "application/json",
             },
             json={
-                "model": "google/gemini-2.5-flash-lite",
+                "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 1500
             },
