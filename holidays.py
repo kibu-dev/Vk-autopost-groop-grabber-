@@ -67,7 +67,7 @@ def generate_holidays_list():
     return holidays
 
 def get_holiday_publish_time(date_str):
-    """Преобразует '8 июля' в timestamp 10:00 МСК (7:00 UTC)"""
+    """Преобразует '8 июля' в timestamp 10:00 МСК (7:00 UTC). Если дата прошла — следующий год."""
     now = datetime.now() + timedelta(hours=3)
     months_ru = {
         "января": 1, "февраля": 2, "марта": 3, "апреля": 4,
@@ -81,9 +81,12 @@ def get_holiday_publish_time(date_str):
         month_name = parts[1].lower()
         month = months_ru.get(month_name, now.month)
         year = now.year
-        if month < now.month:
-            year += 1
+        
         target = datetime(year, month, day, 10, 0, 0) - timedelta(hours=3)
+        
+        if target.timestamp() < datetime.now().timestamp():
+            target = datetime(year + 1, month, day, 10, 0, 0) - timedelta(hours=3)
+        
         return int(target.timestamp())
     return 0
 
@@ -97,10 +100,14 @@ def create_holiday_post(vk_user):
     text = config.get("generated_text", "")
     
     if not date_str or not text:
+        logging.error(f"🎉 Нет даты или текста: date={date_str}, text={bool(text)}")
         return False
     
     pub_time = get_holiday_publish_time(date_str)
-    if pub_time == 0:
+    logging.info(f"🎉 Праздник: {date_str} -> timestamp: {pub_time}, photo: {photo_id if photo_id else 'нет'}")
+    
+    if pub_time == 0 or pub_time < int(datetime.now().timestamp()):
+        logging.error(f"🎉 Невалидная дата публикации: {pub_time}")
         return False
     
     try:
