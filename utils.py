@@ -26,6 +26,9 @@ FRIEND_STATS_FILE = "friend_stats.json"
 GROUP_ACCEPT_STATE_FILE = "group_accept_state.json"
 GROUP_ACCEPT_STATS_FILE = "group_accept_stats.json"
 MODERATION_FILE = "moderation.json"
+TG_CHANNELS_FILE = "tg_channels.json"
+TG_GRAB_STATE_FILE = "tg_grab_state.json"
+TG_GRABBED_FILE = "tg_grabbed.json"
 
 _file_locks = {}
 
@@ -335,6 +338,40 @@ def get_horoscope_next_monday():
     config = load_json("horoscope_config.json", {"enabled": False, "photo_id": "", "next_monday": ""})
     return config.get("next_monday", "")
 
+# ─── Telegram-граббер ───
+
+def get_tg_channels():
+    return load_json(TG_CHANNELS_FILE, {"channels": []}).get("channels", [])
+
+def add_tg_channel(channel):
+    data = load_json(TG_CHANNELS_FILE, {"channels": []})
+    if channel not in data["channels"]:
+        data["channels"].append(channel)
+        save_json(TG_CHANNELS_FILE, data)
+
+def remove_tg_channel(channel):
+    data = load_json(TG_CHANNELS_FILE, {"channels": []})
+    if channel in data["channels"]:
+        data["channels"].remove(channel)
+        save_json(TG_CHANNELS_FILE, data)
+
+def is_tg_grab_enabled():
+    return load_json(TG_GRAB_STATE_FILE, {"enabled": False}).get("enabled", False)
+
+def set_tg_grab_enabled(enabled):
+    save_json(TG_GRAB_STATE_FILE, {"enabled": enabled})
+
+def is_tg_post_grabbed(msg_id, channel):
+    data = load_json(TG_GRABBED_FILE, {"posts": []})
+    return any(p["msg_id"] == msg_id and p["channel"] == channel for p in data["posts"])
+
+def add_tg_grabbed(msg_id, channel):
+    data = load_json(TG_GRABBED_FILE, {"posts": []})
+    data["posts"].append({"msg_id": msg_id, "channel": channel, "date": datetime.now().strftime("%Y-%m-%d")})
+    cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    data["posts"] = [p for p in data["posts"] if p["date"] >= cutoff]
+    save_json(TG_GRABBED_FILE, data)
+
 # ─── Проверки ───
 
 def is_spam(text):
@@ -421,9 +458,11 @@ def remove_from_moderation(post_id):
 def get_stats():
     return {
         "donor_count": len(get_donor_groups()),
+        "tg_channel_count": len(get_tg_channels()),
         "pending_moderation": len(get_moderation_posts()) + len(get_pending_grabs()),
         "total_published": len(load_json(PUBLISHED_FILE, {"posts": []})["posts"]),
         "total_grabbed": len(load_json(GRABBED_FILE, {"posts": []})["posts"]),
+        "total_tg_grabbed": len(load_json(TG_GRABBED_FILE, {"posts": []})["posts"]),
         "scheduled_count": len(get_scheduled_posts()),
     }
 
