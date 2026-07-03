@@ -241,6 +241,16 @@ def run_messenger():
                 send_message(vk, user_id, msg, get_holiday_confirm_keyboard())
                 continue
 
+            if mode == "add_tg_channel":
+                channel = text.strip().lstrip('@')
+                if channel:
+                    add_tg_channel(channel)
+                    send_message(vk, user_id, f"✅ Канал @{channel} добавлен!", get_tg_channels_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Введите название канала.", get_back_admin_keyboard())
+                admin_state.pop(user_id, None)
+                continue
+
             if t in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
                 send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
@@ -362,8 +372,57 @@ def run_messenger():
                 else:
                     send_message(vk, user_id, "📭 Пусто.", get_admin_main_keyboard())
 
-            elif t == "👥 группы-доноры":
-                send_message(vk, user_id, "Группы:", get_donor_groups_keyboard())
+            elif t == "🎣 граббер":
+                send_message(vk, user_id, "🎣 Граббер:", get_grabber_keyboard())
+
+            elif t == "📋 вк-доноры":
+                status = "Включен ✅" if True else "Выключен ❌"
+                send_message(vk, user_id, f"👥 ВК-доноры: {status}", get_donor_groups_keyboard())
+
+            elif t == "▶️ включить вк-граббер":
+                # ВК-граббер всегда включен, просто заглушка
+                send_message(vk, user_id, "✅ ВК-граббер работает.", get_donor_groups_keyboard())
+
+            elif t == "⏸️ выключить вк-граббер":
+                send_message(vk, user_id, "⏸️ ВК-граббер работает всегда.", get_donor_groups_keyboard())
+
+            elif t == "📋 тг-каналы":
+                status = "Включен ✅" if is_tg_grab_enabled() else "Выключен ❌"
+                send_message(vk, user_id, f"📡 ТГ-каналы: {status}", get_tg_channels_keyboard())
+
+            elif t == "▶️ включить тг-граббер":
+                set_tg_grab_enabled(True)
+                send_message(vk, user_id, "📡 ТГ-граббер включен!", get_tg_channels_keyboard())
+
+            elif t == "⏸️ выключить тг-граббер":
+                set_tg_grab_enabled(False)
+                send_message(vk, user_id, "📡 ТГ-граббер выключен.", get_tg_channels_keyboard())
+
+            elif t == "📋 список каналов":
+                channels = get_tg_channels()
+                if channels:
+                    lines = "\n".join([f"• @{ch}" for ch in channels])
+                    send_message(vk, user_id, f"📡 ТГ-каналы:\n{lines}", get_tg_channels_keyboard())
+                else:
+                    send_message(vk, user_id, "📭 Список пуст.", get_tg_channels_keyboard())
+
+            elif t == "➕ добавить канал":
+                admin_state[user_id] = {"mode": "add_tg_channel"}
+                send_message(vk, user_id, "Введите название канала (без @):", get_back_admin_keyboard())
+
+            elif t == "➖ удалить канал":
+                channels = get_tg_channels()
+                if channels:
+                    send_message(vk, user_id, "Выберите канал для удаления:", get_remove_tg_keyboard(channels))
+                else:
+                    send_message(vk, user_id, "📭 Список пуст.", get_tg_channels_keyboard())
+
+            elif t.startswith("➖ @") or t.startswith("➖ "):
+                channels = get_tg_channels()
+                name = t[2:].strip().lstrip('@')
+                if name in channels:
+                    remove_tg_channel(name)
+                    send_message(vk, user_id, f"✅ Канал @{name} удалён!", get_tg_channels_keyboard())
 
             elif t == "🚫 запрет-слова":
                 send_message(vk, user_id, "Слова:", get_forbidden_words_keyboard())
@@ -373,10 +432,15 @@ def run_messenger():
                 msg = (f"📊 Статистика:\n"
                        f"• Опубликовано: {s['total_published']}\n"
                        f"• Запланировано: {s['scheduled_count']}\n"
-                       f"• Взято граббером: {s['total_grabbed']}\n"
+                       f"• Взято ВК-граббером: {s['total_grabbed']}\n"
+                       f"• Взято ТГ-граббером: {s['total_tg_grabbed']}\n"
                        f"• На модерации: {s['pending_moderation']}\n"
-                       f"• Доноров: {s['donor_count']}")
+                       f"• ВК-доноров: {s['donor_count']}\n"
+                       f"• ТГ-каналов: {s['tg_channel_count']}")
                 send_message(vk, user_id, msg, get_admin_main_keyboard())
+
+            elif t == "👥 группы-доноры":
+                send_message(vk, user_id, "Группы:", get_donor_groups_keyboard())
 
             elif t == "📋 список групп":
                 donors = get_donor_groups()
@@ -405,7 +469,7 @@ def run_messenger():
                 for g in donors:
                     try: name = get_group_name(vk_user, g)
                     except: name = str(g)
-                    if t == f"➖ {name}".lower()[:40]:
+                    if t == f"➖ {name}".lower()[:40] and not t.startswith("➖ @"):
                         remove_donor_group(g)
                         send_message(vk, user_id, f"✅ [{name}] удалена!", get_donor_groups_keyboard())
                         break
