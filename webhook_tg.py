@@ -1,19 +1,14 @@
 import logging
 import os
 import json
-import asyncio
 import requests
 import vk_api
 from datetime import datetime, timedelta
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 from config import *
 
 DRAFTS_FILE = "tg_drafts.json"
 app = Flask(__name__)
-tg_app = ApplicationBuilder().token(TG_BOT_TOKEN).build()
-seen = set()
 
 def load_drafts():
     try:
@@ -57,47 +52,54 @@ def next_hour_timestamp():
     nxt = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
     return int(nxt.timestamp())
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg:
-        return
-    if msg.message_id in seen:
-        return
-    seen.add(msg.message_id)
-
-    text = msg.text or msg.caption or ""
-    photos = []
-
-    if msg.photo:
-        file = await msg.photo[-1].get_file()
-        file_bytes = await file.download_as_bytearray()
-        photos.append(file_bytes.hex())
-
-    drafts = load_drafts()
-    drafts[str(msg.message_id)] = {"text": text, "photos": photos}
-    save_drafts(drafts)
-
-    attachments = []
-    for ph_hex in photos:
-        att = vk_upload_photo(bytes.fromhex(ph_hex))
-        if att:
-            attachments.append(att)
-
-    pub_time = next_hour_timestamp()
-    if vk_post(text, attachments, pub_time):
-        pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
-        logging.info(f"📡 TG → VK: запланирован на {pub_str}")
-    else:
-        logging.error("📡 Ошибка отправки в VK")
-
-tg_app.add_handler(MessageHandler(filters.ALL, handle_message))
-
 @app.route(f"/webhook/{TG_BOT_TOKEN}", methods=["POST"])
 def webhook():
     try:
         data = request.get_json(force=True)
-        update = Update.de_json(data, tg_app.bot)
-        tg_app.update_queue.put_nowait(update)
+        
+        if "message" not in data:
+            return "ok"
+        
+        msg = data["message"]
+        msg_id = msg.get("message_id")
+        text = msg.get("text") or msg.get("caption", "")
+        photos = msg.get("photo", [])
+        
+        logging.info(f"📡 TG: {text[:100]} | фото: {len(photos)}")
+        
+        # Сохраняем
+        drafts = load_drafts()
+        drafts[str(msg_id)] = {"text": text, "photos": len(photos)}
+        save_drafts(drafts)
+        
+        # Если есть фото — скачиваем и отправляем в VK
+        if photos:
+            # Берём самое большое фото (последнее в списке)
+            file_id = photos[-1]["file_id"]
+            file_url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/getFile?file_id={file_id}"
+            file_resp = requests.get(file_url).json()
+            file_path = file_resp.get("result", {}).get("file_path")
+            
+            if file_path:
+                download_url = f"https://api.telegram.org/file/bot{TG_BOT_TOKEN}/{file_path}"
+                file_bytes = requests.get(download_url).content
+                
+                attachments = []
+                att = vk_upload_photo(file_bytes)
+                if att:
+                    attachments.append(att)
+                
+                pub_time = next_hour_timestamp()
+                if vk_post(text, attachments, pub_time):
+                    pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
+                    logging.info(f"📡 TG → VK: запланирован на {pub_str}")
+        else:
+            # Только текст
+            pub_time = next_hour_timestamp()
+            if vk_post(text, [], pub_time):
+                pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
+                logging.info(f"📡 TG → VK (текст): запланирован на {pub_str}")
+        
         return "ok"
     except Exception as e:
         logging.error(f"Webhook error: {e}")
@@ -108,16 +110,12 @@ def run_webhook():
         logging.warning("📡 ТГ-бот: не указан TG_BOT_TOKEN")
         return
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(tg_app.initialize())
-
     webhook_url = f"{DOMAIN}/webhook/{TG_BOT_TOKEN}"
     try:
         r = requests.get(f"https://api.telegram.org/bot{TG_BOT_TOKEN}/setWebhook?url={webhook_url}")
-        logging.info(f"📡 Webhook ответ: {r.json()}")
+        logging.info(f"📡 Webhook: {r.json()}")
     except Exception as e:
         logging.error(f"📡 Не удалось установить webhook: {e}")
 
-    logging.info(f"📡 Flask запущен, webhook: {webhook_url}")
-    app.run(host="0.0.0.0", port=5000)
+    logging.info(f"📡 Flask запущен, порт 3000")
+    app.run(host="0.0.0.0", port=3000)
