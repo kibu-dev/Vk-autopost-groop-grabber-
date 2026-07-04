@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import requests
 import vk_api
 from datetime import datetime, timedelta
@@ -138,4 +139,7 @@ def run_tg_bot():
     app.add_handler(CallbackQueryHandler(on_button))
 
     logging.info("📡 ТГ-бот запущен")
-    app.run_polling()
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(app.run_polling())
