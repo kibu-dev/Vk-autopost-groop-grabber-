@@ -129,7 +129,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del drafts[msg_id]
         await query.edit_message_text("🗑 Удалено")
 
-def run_tg_bot():
+async def main():
     if not TG_BOT_TOKEN:
         logging.warning("📡 ТГ-бот: не указан TG_BOT_TOKEN")
         return
@@ -139,7 +139,21 @@ def run_tg_bot():
     app.add_handler(CallbackQueryHandler(on_button))
 
     logging.info("📡 ТГ-бот запущен")
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(app.run_polling())
+
+    # Запуск с retry и timeout
+    while True:
+        try:
+            await app.initialize()
+            await app.start()
+            logging.info("📡 ТГ-бот: polling started")
+            await app.updater.start_polling(timeout=30, read_timeout=30)
+            await asyncio.Event().wait()  # ждём бесконечно
+        except Exception as e:
+            logging.error(f"📡 ТГ-бот ошибка: {e}, перезапуск через 10 сек...")
+            await asyncio.sleep(10)
+
+def run_tg_bot():
+    if not TG_BOT_TOKEN:
+        logging.warning("📡 ТГ-бот: не указан TG_BOT_TOKEN")
+        return
+    asyncio.run(main())
