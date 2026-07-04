@@ -32,7 +32,7 @@ def get_admin_main_keyboard():
     k.add_button("📢 Модерация", VkKeyboardColor.PRIMARY)
     k.add_button("📅 Очередь постов", VkKeyboardColor.PRIMARY)
     k.add_line()
-    k.add_button("🎣 Граббер", VkKeyboardColor.PRIMARY)
+    k.add_button("👥 Группы-доноры", VkKeyboardColor.PRIMARY)
     k.add_button("🚫 Запрет-слова", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("📊 Статистика", VkKeyboardColor.SECONDARY)
@@ -44,37 +44,12 @@ def get_admin_main_keyboard():
     k.add_button("🔙 Пользовательское меню", VkKeyboardColor.SECONDARY)
     return k
 
-def get_grabber_keyboard():
-    k = VkKeyboard(one_time=False)
-    k.add_button("📋 ВК-доноры", VkKeyboardColor.PRIMARY)
-    k.add_button("📋 ТГ-каналы", VkKeyboardColor.PRIMARY)
-    k.add_line()
-    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
-    return k
-
 def get_donor_groups_keyboard():
     k = VkKeyboard(one_time=False)
-    k.add_button("▶️ Включить ВК-граббер", VkKeyboardColor.POSITIVE)
-    k.add_button("⏸️ Выключить ВК-граббер", VkKeyboardColor.NEGATIVE)
-    k.add_line()
     k.add_button("📋 Список групп", VkKeyboardColor.PRIMARY)
-    k.add_line()
     k.add_button("➕ Добавить группу", VkKeyboardColor.POSITIVE)
+    k.add_line()
     k.add_button("➖ Удалить группу", VkKeyboardColor.NEGATIVE)
-    k.add_line()
-    k.add_button("🔙 Назад", VkKeyboardColor.SECONDARY)
-    return k
-
-def get_tg_channels_keyboard():
-    k = VkKeyboard(one_time=False)
-    k.add_button("▶️ Включить ТГ-граббер", VkKeyboardColor.POSITIVE)
-    k.add_button("⏸️ Выключить ТГ-граббер", VkKeyboardColor.NEGATIVE)
-    k.add_line()
-    k.add_button("📋 Список каналов", VkKeyboardColor.PRIMARY)
-    k.add_line()
-    k.add_button("➕ Добавить канал", VkKeyboardColor.POSITIVE)
-    k.add_button("➖ Удалить канал", VkKeyboardColor.NEGATIVE)
-    k.add_line()
     k.add_button("🔙 Назад", VkKeyboardColor.SECONDARY)
     return k
 
@@ -124,14 +99,6 @@ def get_remove_donor_keyboard(donors, vk_user=None):
         except: name = str(g)
         k.add_button(f"➖ {name}"[:40], VkKeyboardColor.NEGATIVE)
         if i % 2 == 0 and i != len(donors[:10]): k.add_line()
-    k.add_line(); k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
-    return k
-
-def get_remove_tg_keyboard(channels):
-    k = VkKeyboard(one_time=True)
-    for i, ch in enumerate(channels[:10], 1):
-        k.add_button(f"➖ {ch}"[:40], VkKeyboardColor.NEGATIVE)
-        if i % 2 == 0 and i != len(channels[:10]): k.add_line()
     k.add_line(); k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
 
