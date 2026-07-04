@@ -52,6 +52,14 @@ def next_hour_timestamp():
     nxt = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
     return int(nxt.timestamp())
 
+@app.route("/test_tg", methods=["GET"])
+def test_tg():
+    try:
+        r = requests.get("https://api.telegram.org", timeout=5)
+        return f"OK: {r.status_code}"
+    except Exception as e:
+        return f"ERROR: {e}"
+
 @app.route(f"/webhook/{TG_BOT_TOKEN}", methods=["POST"])
 def webhook():
     try:
@@ -67,14 +75,11 @@ def webhook():
         
         logging.info(f"📡 TG: {text[:100]} | фото: {len(photos)}")
         
-        # Сохраняем
         drafts = load_drafts()
         drafts[str(msg_id)] = {"text": text, "photos": len(photos)}
         save_drafts(drafts)
         
-        # Если есть фото — скачиваем и отправляем в VK
         if photos:
-            # Берём самое большое фото (последнее в списке)
             file_id = photos[-1]["file_id"]
             file_url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/getFile?file_id={file_id}"
             file_resp = requests.get(file_url).json()
@@ -94,7 +99,6 @@ def webhook():
                     pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
                     logging.info(f"📡 TG → VK: запланирован на {pub_str}")
         else:
-            # Только текст
             pub_time = next_hour_timestamp()
             if vk_post(text, [], pub_time):
                 pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
