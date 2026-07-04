@@ -13,9 +13,9 @@ from friend_acceptor import run_friend_acceptor
 from group_acceptor import run_group_acceptor
 from weekly_horoscope import run_weekly_horoscope
 
-def start_tg_bot():
-    from tg_grabber import run_tg_bot
-    run_tg_bot()
+def start_webhook():
+    from webhook_tg import run_webhook
+    run_webhook()
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -43,8 +43,8 @@ if __name__ == "__main__":
     threading.Thread(target=run_group_acceptor, daemon=True).start()
     threading.Thread(target=run_weekly_horoscope, daemon=True).start()
 
-    # ТГ-бот в отдельном процессе
-    multiprocessing.Process(target=start_tg_bot, daemon=True).start()
+    # Webhook ТГ-бот в отдельном процессе
+    multiprocessing.Process(target=start_webhook, daemon=True).start()
 
     # ВК ЛС бот в главном потоке
     run_messenger()
