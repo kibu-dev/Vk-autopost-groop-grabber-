@@ -1,78 +1,141 @@
-import time
 import logging
 import requests
 import vk_api
-from telethon import TelegramClient, events
+from datetime import datetime, timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from config import *
-from utils import *
 
-def run_tg_grabber():
-    if not TG_API_ID or not TG_API_HASH:
-        logging.warning("📡 ТГ-граббер: не указаны TG_API_ID/TG_API_HASH")
+drafts = {}
+seen = set()
+
+def vk_upload_photo(file_bytes):
+    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
+    upload = vk.photos.getWallUploadServer(group_id=GROUP_ID)
+    r = requests.post(upload["upload_url"], files={"photo": file_bytes}).json()
+    if 'photo' in r and r['photo']:
+        saved = vk.photos.saveWallPhoto(photo=r['photo'], server=r['server'], hash=r['hash'], group_id=GROUP_ID)
+        if saved:
+            p = saved[0]
+            return f"photo{p['owner_id']}_{p['id']}"
+    return None
+
+def vk_post(text, attachments, publish_time=None):
+    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
+    try:
+        vk.wall.post(
+            owner_id=-GROUP_ID,
+            message=text or "",
+            attachments=",".join(attachments) if attachments else None,
+            from_group=1,
+            publish_date=publish_time
+        )
+        return True
+    except Exception as e:
+        logging.error(f"TG VK post error: {e}")
+        return False
+
+def next_hour_timestamp():
+    now = datetime.now()
+    nxt = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+    return int(nxt.timestamp())
+
+def build_keyboard(msg_id):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🖼 Только фото", callback_data=f"photo:{msg_id}"),
+            InlineKeyboardButton("📝 Только текст", callback_data=f"text:{msg_id}")
+        ],
+        [
+            InlineKeyboardButton("📤 В VK (сейчас)", callback_data=f"send_now:{msg_id}"),
+            InlineKeyboardButton("⏰ В VK (отложка)", callback_data=f"send_sched:{msg_id}")
+        ],
+        [
+            InlineKeyboardButton("🗑 Удалить", callback_data=f"del:{msg_id}")
+        ]
+    ])
+
+async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if msg.message_id in seen:
+        return
+    seen.add(msg.message_id)
+
+    text = msg.text or msg.caption or ""
+    photos = []
+
+    if msg.photo:
+        file = await msg.photo[-1].get_file()
+        photos.append(file)
+
+    drafts[msg.message_id] = {"text": text, "photos": photos}
+
+    await msg.reply_text(
+        f"📥 Пост получен\nТекст: {text[:100]}...\nФото: {len(photos)} шт.\n\nВыбери действие:",
+        reply_markup=build_keyboard(msg.message_id)
+    )
+
+async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    action, msg_id = query.data.split(":")
+    msg_id = int(msg_id)
+
+    if msg_id not in drafts:
+        await query.edit_message_text("❌ Пост не найден")
         return
 
-    vk_user = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
-    
-    client = TelegramClient("tg_session", TG_API_ID, TG_API_HASH)
-    
-    logging.info("📡 ТГ-граббер запущен")
+    d = drafts[msg_id]
 
-    async def main():
-        channels = get_tg_channels()
-        if channels:
-            @client.on(events.NewMessage(chats=channels))
-            async def handler(event):
-                if not is_tg_grab_enabled():
-                    return
-                
-                msg = event.message
-                msg_id = msg.id
-                channel = event.chat.username or str(event.chat.id)
-                
-                if is_tg_post_grabbed(msg_id, channel):
-                    return
-                
-                add_tg_grabbed(msg_id, channel)
-                
-                text = msg.message or ""
-                
-                if contains_any_link(text) or is_spam(text):
-                    reason = "ссылки" if contains_any_link(text) else "спам-слова"
-                    logging.info(f"📡 ТГ пост {msg_id} → модерация ({reason})")
-                    return
-                
-                attachments = []
-                if msg.photo:
-                    try:
-                        file_bytes = await msg.download_media(bytes)
-                        upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
-                        files = {'photo': ('tg_image.jpg', file_bytes, 'image/jpeg')}
-                        up = requests.post(upload_server['upload_url'], files=files).json()
-                        if 'photo' in up and up['photo']:
-                            saved = vk_user.photos.saveWallPhoto(
-                                photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
-                            )
-                            if saved:
-                                photo = saved[0]
-                                attachments.append(f"photo{photo['owner_id']}_{photo['id']}")
-                    except Exception as e:
-                        logging.error(f"📡 Ошибка загрузки фото: {e}")
-                
-                pub_time = get_next_free_hour()
-                try:
-                    vk_user.wall.post(
-                        owner_id=-GROUP_ID,
-                        message=text,
-                        attachments=",".join(attachments) if attachments else None,
-                        from_group=1,
-                        publish_date=pub_time
-                    )
-                    pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
-                    logging.info(f"📡 ТГ пост {msg_id} запланирован на {pub_str}")
-                except Exception as e:
-                    logging.error(f"📡 Ошибка публикации: {e}")
-        
-        await client.run_until_disconnected()
+    if action == "photo":
+        d["text"] = ""
+        await query.edit_message_text("✅ Оставлено только фото")
 
-    with client:
-        client.loop.run_until_complete(main())
+    elif action == "text":
+        d["photos"] = []
+        await query.edit_message_text("✅ Оставлен только текст")
+
+    elif action == "send_now":
+        attachments = []
+        for p in d["photos"]:
+            file_bytes = await p.download_as_bytearray()
+            att = vk_upload_photo(file_bytes)
+            if att:
+                attachments.append(att)
+
+        if vk_post(d["text"], attachments):
+            await query.edit_message_text("✅ Опубликовано в ВК!")
+        else:
+            await query.edit_message_text("❌ Ошибка публикации")
+
+    elif action == "send_sched":
+        attachments = []
+        for p in d["photos"]:
+            file_bytes = await p.download_as_bytearray()
+            att = vk_upload_photo(file_bytes)
+            if att:
+                attachments.append(att)
+
+        pub_time = next_hour_timestamp()
+        if vk_post(d["text"], attachments, pub_time):
+            pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
+            await query.edit_message_text(f"✅ Запланировано на {pub_str}")
+        else:
+            await query.edit_message_text("❌ Ошибка публикации")
+
+    elif action == "del":
+        del drafts[msg_id]
+        await query.edit_message_text("🗑 Удалено")
+
+def run_tg_bot():
+    if not TG_BOT_TOKEN:
+        logging.warning("📡 ТГ-бот: не указан TG_BOT_TOKEN")
+        return
+
+    app = ApplicationBuilder().token(TG_BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.ALL, on_message))
+    app.add_handler(CallbackQueryHandler(on_button))
+
+    logging.info("📡 ТГ-бот запущен")
+    app.run_polling()
