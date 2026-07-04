@@ -15,6 +15,4 @@ GRAB_POSTS_PER_GROUP = int(os.getenv("GRAB_POSTS_PER_GROUP", "3"))
 MAX_GRAB_PER_GROUP_DAY = int(os.getenv("MAX_GRAB_PER_GROUP_DAY", "3"))
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-TG_API_ID = int(os.getenv("TG_API_ID", "0"))
-TG_API_HASH = os.getenv("TG_API_HASH", "")
-TG_PHONE = os.getenv("TG_PHONE", "")
+TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
