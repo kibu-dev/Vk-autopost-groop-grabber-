@@ -1,5 +1,5 @@
 import logging
-import asyncio
+import json
 import requests
 import vk_api
 from datetime import datetime, timedelta
@@ -7,8 +7,23 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from config import *
 
-drafts = {}
+DRAFTS_FILE = "tg_drafts.json"
 seen = set()
+
+# ─── Черновая работа с черновиками ───
+
+def load_drafts():
+    try:
+        with open(DRAFTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_drafts(data):
+    with open(DRAFTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+
+# ─── VK ───
 
 def vk_upload_photo(file_bytes):
     vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
@@ -41,6 +56,8 @@ def next_hour_timestamp():
     nxt = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
     return int(nxt.timestamp())
 
+# ─── Клавиатура ───
+
 def build_keyboard(msg_id):
     return InlineKeyboardMarkup([
         [
@@ -56,6 +73,8 @@ def build_keyboard(msg_id):
         ]
     ])
 
+# ─── Обработчики ───
+
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if msg.message_id in seen:
@@ -67,9 +86,12 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if msg.photo:
         file = await msg.photo[-1].get_file()
-        photos.append(file)
+        file_bytes = await file.download_as_bytearray()
+        photos.append(file_bytes.hex())  # храним как hex строку в JSON
 
-    drafts[msg.message_id] = {"text": text, "photos": photos}
+    drafts = load_drafts()
+    drafts[str(msg.message_id)] = {"text": text, "photos": photos}
+    save_drafts(drafts)
 
     await msg.reply_text(
         f"📥 Пост получен\nТекст: {text[:100]}...\nФото: {len(photos)} шт.\n\nВыбери действие:",
@@ -83,53 +105,63 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action, msg_id = query.data.split(":")
     msg_id = int(msg_id)
 
-    if msg_id not in drafts:
+    drafts = load_drafts()
+    if str(msg_id) not in drafts:
         await query.edit_message_text("❌ Пост не найден")
         return
 
-    d = drafts[msg_id]
+    d = drafts[str(msg_id)]
 
     if action == "photo":
         d["text"] = ""
+        save_drafts(drafts)
         await query.edit_message_text("✅ Оставлено только фото")
 
     elif action == "text":
         d["photos"] = []
+        save_drafts(drafts)
         await query.edit_message_text("✅ Оставлен только текст")
 
     elif action == "send_now":
         attachments = []
-        for p in d["photos"]:
-            file_bytes = await p.download_as_bytearray()
+        for ph_hex in d["photos"]:
+            file_bytes = bytes.fromhex(ph_hex)
             att = vk_upload_photo(file_bytes)
             if att:
                 attachments.append(att)
 
         if vk_post(d["text"], attachments):
+            del drafts[str(msg_id)]
+            save_drafts(drafts)
             await query.edit_message_text("✅ Опубликовано в ВК!")
         else:
             await query.edit_message_text("❌ Ошибка публикации")
 
     elif action == "send_sched":
         attachments = []
-        for p in d["photos"]:
-            file_bytes = await p.download_as_bytearray()
+        for ph_hex in d["photos"]:
+            file_bytes = bytes.fromhex(ph_hex)
             att = vk_upload_photo(file_bytes)
             if att:
                 attachments.append(att)
 
         pub_time = next_hour_timestamp()
         if vk_post(d["text"], attachments, pub_time):
+            del drafts[str(msg_id)]
+            save_drafts(drafts)
             pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
             await query.edit_message_text(f"✅ Запланировано на {pub_str}")
         else:
             await query.edit_message_text("❌ Ошибка публикации")
 
     elif action == "del":
-        del drafts[msg_id]
+        del drafts[str(msg_id)]
+        save_drafts(drafts)
         await query.edit_message_text("🗑 Удалено")
 
-async def main():
+# ─── Запуск ───
+
+def run_tg_bot():
     if not TG_BOT_TOKEN:
         logging.warning("📡 ТГ-бот: не указан TG_BOT_TOKEN")
         return
@@ -140,20 +172,8 @@ async def main():
 
     logging.info("📡 ТГ-бот запущен")
 
-    # Запуск с retry и timeout
-    while True:
-        try:
-            await app.initialize()
-            await app.start()
-            logging.info("📡 ТГ-бот: polling started")
-            await app.updater.start_polling(timeout=30, read_timeout=30)
-            await asyncio.Event().wait()  # ждём бесконечно
-        except Exception as e:
-            logging.error(f"📡 ТГ-бот ошибка: {e}, перезапуск через 10 сек...")
-            await asyncio.sleep(10)
-
-def run_tg_bot():
-    if not TG_BOT_TOKEN:
-        logging.warning("📡 ТГ-бот: не указан TG_BOT_TOKEN")
-        return
-    asyncio.run(main())
+    app.run_polling(
+        poll_interval=2,
+        timeout=10,
+        drop_pending_updates=True
+    )
