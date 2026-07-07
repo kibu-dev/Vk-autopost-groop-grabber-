@@ -124,6 +124,24 @@ def run_messenger():
                 send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
                 continue
 
+            if mode == "reddit_edit":
+                if t in ["🔙 отмена", "❌ отмена"]:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
+                    continue
+
+                draft_id = state.get("draft_id")
+                from reddit_handler import load_drafts, save_drafts
+                drafts = load_drafts()
+                if draft_id in drafts:
+                    drafts[draft_id]["text"] = text
+                    save_drafts(drafts)
+                    send_message(vk, user_id, "✅ Текст обновлён!", get_admin_main_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
+                admin_state.pop(user_id, None)
+                continue
+
             if mode == "horoscope_photo":
                 if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
@@ -339,7 +357,7 @@ def run_messenger():
                 pending = get_pending_grabs()
                 if posts or pending:
                     if posts:
-                        send_message(vk, user_id, f"👤 Подозрительные ({len(posts)}):", get_admin_main_keyboard())
+                        send_message(vk, user_id, f"👤 На модерации ({len(posts)}):", get_admin_main_keyboard())
                         for p in posts[:10]:
                             send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}",
                                          get_moderation_keyboard(p['post_id']))
@@ -742,6 +760,41 @@ def run_messenger():
                     send_message(vk, user_id, msg, get_holidays_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не удалось обновить.", get_holidays_keyboard())
+
+            elif t.startswith("✅ редит публ "):
+                draft_id = t.split()[-1]
+                from reddit_handler import load_drafts, save_drafts
+                drafts = load_drafts()
+                if draft_id in drafts:
+                    d = drafts[draft_id]
+                    post_text = f"{d['title']}\n\n{d['text']}" if d['title'] else d['text']
+                    if d.get('url'):
+                        post_text += f"\n\nИсточник: {d['url']}"
+                    
+                    result = vk_user.wall.post(
+                        owner_id=-GROUP_ID,
+                        message=post_text[:4000],
+                        from_group=1
+                    )
+                    add_published_post(result["post_id"], ADMIN_ID, post_text[:200])
+                    remove_from_moderation(draft_id)
+                    
+                    drafts[draft_id]["status"] = "published"
+                    save_drafts(drafts)
+                    
+                    send_message(vk, user_id, f"✅ Пост Reddit опубликован!", get_admin_main_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
+
+            elif t.startswith("❌ редит удл "):
+                draft_id = t.split()[-1]
+                from reddit_handler import load_drafts, save_drafts
+                drafts = load_drafts()
+                if draft_id in drafts:
+                    del drafts[draft_id]
+                    save_drafts(drafts)
+                remove_from_moderation(draft_id)
+                send_message(vk, user_id, "🗑 Пост Reddit удалён.", get_admin_main_keyboard())
 
             elif t == "🤖 ai-постер":
                 send_message(vk, user_id, "🤖 AI-постер:", get_ai_keyboard())
