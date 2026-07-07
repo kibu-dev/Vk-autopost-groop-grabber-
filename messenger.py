@@ -771,18 +771,39 @@ def run_messenger():
                     if d.get('url'):
                         post_text += f"\n\nИсточник: {d['url']}"
                     
+                    attachments = []
+                    images = d.get('images', [])
+                    for img_url in images[:5]:
+                        try:
+                            img_data = req.get(img_url, timeout=10).content
+                            upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                            files = {'photo': ('reddit.jpg', img_data, 'image/jpeg')}
+                            up = req.post(upload_server['upload_url'], files=files).json()
+                            if 'photo' in up and up['photo']:
+                                saved = vk_user.photos.saveWallPhoto(
+                                    photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
+                                )
+                                if saved:
+                                    photo = saved[0]
+                                    attachments.append(f"photo{photo['owner_id']}_{photo['id']}")
+                        except Exception as e:
+                            logging.error(f"Ошибка загрузки фото Reddit: {e}")
+                    
                     result = vk_user.wall.post(
                         owner_id=-GROUP_ID,
                         message=post_text[:4000],
+                        attachments=",".join(attachments) if attachments else None,
                         from_group=1
                     )
                     add_published_post(result["post_id"], ADMIN_ID, post_text[:200])
-                    remove_from_moderation(draft_id)
                     
                     drafts[draft_id]["status"] = "published"
                     save_drafts(drafts)
                     
-                    send_message(vk, user_id, f"✅ Пост Reddit опубликован!", get_admin_main_keyboard())
+                    msg = f"✅ Пост Reddit опубликован!"
+                    if attachments:
+                        msg += f" 📎 {len(attachments)} фото"
+                    send_message(vk, user_id, msg, get_admin_main_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
 
@@ -793,7 +814,6 @@ def run_messenger():
                 if draft_id in drafts:
                     del drafts[draft_id]
                     save_drafts(drafts)
-                remove_from_moderation(draft_id)
                 send_message(vk, user_id, "🗑 Пост Reddit удалён.", get_admin_main_keyboard())
 
             elif t == "🤖 ai-постер":
