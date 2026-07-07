@@ -770,15 +770,21 @@ def run_messenger():
                     post_text = f"{d['title']}\n\n{d['text']}" if d['title'] else d['text']
                     if d.get('url'):
                         post_text += f"\n\nИсточник: {d['url']}"
-                    
+
                     attachments = []
+                    errors = []
                     images = d.get('images', [])
+
                     for img_url in images[:5]:
                         try:
-                            img_data = req.get(img_url, timeout=10).content
+                            send_message(vk, user_id, f"⏳ Скачиваю: {img_url[:50]}...")
+                            img_data = req.get(img_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'}).content
+                            send_message(vk, user_id, f"✅ Скачано: {len(img_data)} байт")
+
                             upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
                             files = {'photo': ('reddit.jpg', img_data, 'image/jpeg')}
                             up = req.post(upload_server['upload_url'], files=files).json()
+
                             if 'photo' in up and up['photo']:
                                 saved = vk_user.photos.saveWallPhoto(
                                     photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
@@ -786,9 +792,14 @@ def run_messenger():
                                 if saved:
                                     photo = saved[0]
                                     attachments.append(f"photo{photo['owner_id']}_{photo['id']}")
+                                    send_message(vk, user_id, f"✅ Фото загружено!")
+                                else:
+                                    errors.append("saveWallPhoto вернул пусто")
+                            else:
+                                errors.append(f"Upload ответ: {up}")
                         except Exception as e:
-                            logging.error(f"Ошибка загрузки фото Reddit: {e}")
-                    
+                            errors.append(str(e))
+
                     result = vk_user.wall.post(
                         owner_id=-GROUP_ID,
                         message=post_text[:4000],
@@ -796,13 +807,14 @@ def run_messenger():
                         from_group=1
                     )
                     add_published_post(result["post_id"], ADMIN_ID, post_text[:200])
-                    
                     drafts[draft_id]["status"] = "published"
                     save_drafts(drafts)
-                    
+
                     msg = f"✅ Пост Reddit опубликован!"
                     if attachments:
                         msg += f" 📎 {len(attachments)} фото"
+                    if errors:
+                        msg += f"\n❌ Ошибки: {'; '.join(errors[:2])}"
                     send_message(vk, user_id, msg, get_admin_main_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
