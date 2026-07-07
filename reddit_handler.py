@@ -5,7 +5,6 @@ from flask import Flask, request
 import vk_api
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from config import *
-from utils import add_to_moderation
 
 REDDIT_DRAFTS_FILE = "reddit_drafts.json"
 app = Flask(__name__)
@@ -37,51 +36,34 @@ def reddit_post():
         drafts[draft_id] = {
             "title": title,
             "text": text,
+            "original_text": text,
             "images": images,
             "url": url,
             "author": author,
             "subreddit": subreddit,
             "source": "reddit",
-            "status": "pending"
+            "status": "pending",
+            "translated": False
         }
         save_drafts(drafts)
 
-        msg = f"📱 Reddit | r/{subreddit} | u/{author}\n\n"
-        if title:
-            msg += f"📌 {title}\n\n"
-        if text:
-            msg += f"{text[:1000]}\n\n"
-        if images:
-            msg += f"🖼 Фото: {len(images)} шт.\n"
-        if url:
-            msg += f"🔗 {url}"
-
-        # Добавляем в общую модерацию
-        add_to_moderation(draft_id, "reddit", ADMIN_ID, msg, "", "Reddit пост")
+        # Уведомление админу — просто информируем
+        msg = f"📱 Новый пост с Reddit!\n📌 {title[:100]}\n🖼 Фото: {len(images)} шт.\n\nЗаходи в раздел «📱 Reddit» для обработки."
 
         vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
-
-        keyboard = VkKeyboard(one_time=True)
-        keyboard.add_button(f"✅ Реддит публ {draft_id}", VkKeyboardColor.POSITIVE)
-        keyboard.add_line()
-        keyboard.add_button(f"❌ Реддит удл {draft_id}", VkKeyboardColor.NEGATIVE)
-        keyboard.add_line()
-        keyboard.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
-
         vk_group.messages.send(
             user_id=ADMIN_ID,
             message=msg,
             random_id=0,
-            keyboard=keyboard.get_keyboard(),
             group_id=GROUP_ID
         )
 
-        logging.info(f"📱 Reddit пост {draft_id} отправлен в модерацию")
+        logging.info(f"📱 Reddit пост {draft_id} сохранён")
         return "ok"
     except Exception as e:
         logging.error(f"Reddit error: {e}")
         return "error", 500
 
 def run_reddit_handler():
-    logging.info("📱 Reddit handler запущен на порту 4000")
+    logging.info("📱 Reddit handler запущен на порту 3000")
     app.run(host="0.0.0.0", port=3000)
