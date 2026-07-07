@@ -7,7 +7,7 @@ from datetime import datetime
 from config import *
 from utils import *
 from keyboards import *
-from ai_poster import generate_variants, parse_variants, load_prompt, ai_log
+from ai_poster import generate_variants, parse_variants, load_prompt, ai_log, generate_text
 from holidays import (
     get_holidays_config, save_holidays_config, generate_holidays_list,
     get_holiday_publish_time, create_holiday_post, generate_holiday_text
@@ -116,7 +116,6 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-
                 att = ",".join(state.get("attachments", [])) or None
                 r = vk_user.wall.post(owner_id=-GROUP_ID, message=text, attachments=att, from_group=1)
                 add_published_post(r["post_id"], ADMIN_ID, text)
@@ -129,7 +128,6 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-
                 draft_id = state.get("draft_id")
                 from reddit_handler import load_drafts, save_drafts
                 drafts = load_drafts()
@@ -147,7 +145,6 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-
                 photo_saved = False
                 try:
                     msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
@@ -178,7 +175,6 @@ def run_messenger():
                                         break
                 except Exception as e:
                     logging.error(f"HOROSCOPE UPLOAD ERROR: {e}")
-
                 if photo_saved:
                     send_message(vk, user_id, "✅ Фото сохранено!", get_horoscope_keyboard())
                 else:
@@ -191,7 +187,6 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-
                 photo_saved = False
                 try:
                     msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
@@ -224,12 +219,10 @@ def run_messenger():
                                         break
                 except Exception as e:
                     logging.error(f"HOLIDAY UPLOAD ERROR: {e}")
-
                 if photo_saved:
                     config = get_holidays_config()
                     name = config.get("selected_name", "")
                     send_message(vk, user_id, f"✅ Фото сохранено!\n⏳ Генерирую поздравление для: {name}")
-                    
                     text = generate_holiday_text(name)
                     if text:
                         config["generated_text"] = text
@@ -240,7 +233,6 @@ def run_messenger():
                         send_message(vk, user_id, "❌ Не удалось сгенерировать текст.", get_holidays_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_holidays_keyboard())
-                
                 admin_state.pop(user_id, None)
                 continue
 
@@ -249,12 +241,10 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-
                 config = get_holidays_config()
                 config["generated_text"] = text
                 save_holidays_config(config)
                 admin_state.pop(user_id, None)
-
                 msg = f"📝 Ваш текст:\n\n{text[:500]}...\n\nЗапланировать на {config.get('selected_date', '?')}?"
                 send_message(vk, user_id, msg, get_holiday_confirm_keyboard())
                 continue
@@ -357,7 +347,7 @@ def run_messenger():
                 pending = get_pending_grabs()
                 if posts or pending:
                     if posts:
-                        send_message(vk, user_id, f"👤 На модерации ({len(posts)}):", get_admin_main_keyboard())
+                        send_message(vk, user_id, f"👤 Подозрительные ({len(posts)}):", get_admin_main_keyboard())
                         for p in posts[:10]:
                             send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}",
                                          get_moderation_keyboard(p['post_id']))
@@ -386,13 +376,210 @@ def run_messenger():
             elif t == "🚫 запрет-слова":
                 send_message(vk, user_id, "Слова:", get_forbidden_words_keyboard())
 
+            elif t == "📱 reddit":
+                from reddit_handler import load_drafts
+                drafts = load_drafts()
+                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                count = len(pending)
+                if count > 0:
+                    send_message(vk, user_id, f"📱 Reddit постов: {count}", get_reddit_keyboard())
+                else:
+                    send_message(vk, user_id, "📱 Нет новых постов с Reddit.", get_reddit_keyboard())
+
+            elif t == "📋 просмотр постов":
+                from reddit_handler import load_drafts
+                drafts = load_drafts()
+                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                if not pending:
+                    send_message(vk, user_id, "📱 Нет постов.", get_reddit_keyboard())
+                    continue
+                
+                ids = list(pending.keys())
+                idx = 0
+                d = pending[ids[idx]]
+                
+                msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
+                if d.get('title'):
+                    msg += f"📌 {d['title']}\n\n"
+                if d.get('text'):
+                    msg += f"{d['text'][:500]}\n\n"
+                if d.get('images'):
+                    msg += f"🖼 Фото: {len(d['images'])} шт.\n"
+                if d.get('url'):
+                    msg += f"🔗 {d['url']}\n"
+                if d.get('translated'):
+                    msg += "🌐 Переведено\n"
+                
+                admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+                has_text = bool(d.get('text', '').strip())
+                send_message(vk, user_id, msg, get_reddit_post_keyboard(has_text))
+
+            elif t == "🗑 очистить всё":
+                from reddit_handler import load_drafts, save_drafts
+                drafts = load_drafts()
+                drafts = {k: v for k, v in drafts.items() if v.get("status") != "pending"}
+                save_drafts(drafts)
+                send_message(vk, user_id, "🗑 Все посты Reddit удалены.", get_admin_main_keyboard())
+
+            # Reddit navigation and actions
+            elif mode == "reddit_view":
+                from reddit_handler import load_drafts, save_drafts
+                drafts = load_drafts()
+                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                ids = state.get("ids", [])
+                idx = state.get("index", 0)
+                
+                if not pending:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
+                    continue
+
+                if t == "⬅️ предыдущий":
+                    idx = (idx - 1) % len(ids)
+                elif t == "➡️ следующий":
+                    idx = (idx + 1) % len(ids)
+                elif t == "✅ в очередь":
+                    draft_id = ids[idx]
+                    d = pending[draft_id]
+                    
+                    # Загружаем фото
+                    attachments = []
+                    for img_url in d.get('images', [])[:10]:
+                        try:
+                            resp = req.get(img_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+                            if resp.status_code != 200 or len(resp.content) < 1000:
+                                continue
+                            upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                            files = {'photo': ('reddit.jpg', resp.content, 'image/jpeg')}
+                            up = req.post(upload_server['upload_url'], files=files).json()
+                            if 'photo' in up and up['photo']:
+                                saved = vk_user.photos.saveWallPhoto(
+                                    photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
+                                )
+                                if saved:
+                                    photo = saved[0]
+                                    attachments.append(f"photo{photo['owner_id']}_{photo['id']}")
+                        except:
+                            pass
+                    
+                    post_text = d.get('text', '')
+                    if d.get('title') and not post_text:
+                        post_text = d['title']
+                    elif d.get('title'):
+                        post_text = f"{d['title']}\n\n{post_text}"
+                    
+                    pub_time = get_next_free_hour()
+                    vk_user.wall.post(
+                        owner_id=-GROUP_ID,
+                        message=post_text[:4000],
+                        attachments=",".join(attachments) if attachments else None,
+                        from_group=1,
+                        publish_date=pub_time
+                    )
+                    add_scheduled_post(pub_time, post_text[:200], 0)
+                    
+                    del drafts[draft_id]
+                    save_drafts(drafts)
+                    
+                    pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
+                    send_message(vk, user_id, f"✅ В очереди на {pub_str}!", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                    continue
+
+                elif t == "🤖 ии перевод":
+                    draft_id = ids[idx]
+                    d = pending[draft_id]
+                    original = d.get("original_text", d.get("text", ""))
+                    if original:
+                        send_message(vk, user_id, "⏳ Перевожу...")
+                        translated = generate_text(f"Переведи на русский язык:\n\n{original[:2000]}")
+                        if translated:
+                            drafts[draft_id]["text"] = translated
+                            drafts[draft_id]["translated"] = True
+                            save_drafts(drafts)
+                            pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                            d = pending[ids[idx]]
+                            send_message(vk, user_id, f"✅ Переведено!\n\n{translated[:500]}", get_admin_main_keyboard())
+                        else:
+                            send_message(vk, user_id, "❌ Ошибка перевода.", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                    continue
+
+                elif t == "🔄 ии рерайт":
+                    draft_id = ids[idx]
+                    d = pending[draft_id]
+                    original = d.get("text", "")
+                    if original:
+                        send_message(vk, user_id, "⏳ Перефразирую...")
+                        rewritten = generate_text(f"Перефразируй этот текст своими словами, сохрани смысл:\n\n{original[:2000]}")
+                        if rewritten:
+                            drafts[draft_id]["text"] = rewritten
+                            save_drafts(drafts)
+                            pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                            d = pending[ids[idx]]
+                            send_message(vk, user_id, f"✅ Готово!\n\n{rewritten[:500]}", get_admin_main_keyboard())
+                        else:
+                            send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                    continue
+
+                elif t == "✏️ редактировать":
+                    draft_id = ids[idx]
+                    admin_state[user_id] = {"mode": "reddit_edit", "draft_id": draft_id}
+                    send_message(vk, user_id, "✏️ Напишите новый текст:", get_cancel_keyboard())
+                    continue
+
+                elif t == "❌ удалить":
+                    draft_id = ids[idx]
+                    del drafts[draft_id]
+                    save_drafts(drafts)
+                    send_message(vk, user_id, "🗑 Удалён.", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                    continue
+
+                elif t == "🔙 назад":
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "📱 Reddit", get_reddit_keyboard())
+                    continue
+
+                # Refresh and show current
+                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                ids = list(pending.keys())
+                if not ids:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
+                    continue
+                
+                idx = min(idx, len(ids) - 1)
+                d = pending[ids[idx]]
+                
+                msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
+                if d.get('title'):
+                    msg += f"📌 {d['title']}\n\n"
+                if d.get('text'):
+                    msg += f"{d['text'][:500]}\n\n"
+                if d.get('images'):
+                    msg += f"🖼 Фото: {len(d['images'])} шт.\n"
+                if d.get('url'):
+                    msg += f"🔗 {d['url']}\n"
+                if d.get('translated'):
+                    msg += "🌐 Переведено\n"
+                
+                admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+                has_text = bool(d.get('text', '').strip())
+                send_message(vk, user_id, msg, get_reddit_post_keyboard(has_text))
+
             elif t == "📊 статистика":
                 s = get_stats()
+                from reddit_handler import load_drafts
+                drafts = load_drafts()
+                reddit_pending = len({k: v for k, v in drafts.items() if v.get("status") == "pending"})
                 msg = (f"📊 Статистика:\n"
                        f"• Опубликовано: {s['total_published']}\n"
                        f"• Запланировано: {s['scheduled_count']}\n"
                        f"• Взято граббером: {s['total_grabbed']}\n"
                        f"• На модерации: {s['pending_moderation']}\n"
+                       f"• Reddit постов: {reddit_pending}\n"
                        f"• Доноров: {s['donor_count']}")
                 send_message(vk, user_id, msg, get_admin_main_keyboard())
 
@@ -658,7 +845,6 @@ def run_messenger():
                     else:
                         send_message(vk, user_id, "❌ Не удалось загрузить список.", get_admin_main_keyboard())
                         continue
-
                 holidays = config.get("holidays_list", [])
                 idx = config.get("current_index", 0)
                 if 0 <= idx < len(holidays):
@@ -760,73 +946,6 @@ def run_messenger():
                     send_message(vk, user_id, msg, get_holidays_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не удалось обновить.", get_holidays_keyboard())
-
-            elif t.startswith("✅ редит публ "):
-                draft_id = t.split()[-1]
-                from reddit_handler import load_drafts, save_drafts
-                drafts = load_drafts()
-                if draft_id in drafts:
-                    d = drafts[draft_id]
-                    post_text = f"{d['title']}\n\n{d['text']}" if d['title'] else d['text']
-                    if d.get('url'):
-                        post_text += f"\n\nИсточник: {d['url']}"
-
-                    attachments = []
-                    errors = []
-                    images = d.get('images', [])
-
-                    for img_url in images[:5]:
-                        try:
-                            send_message(vk, user_id, f"⏳ Скачиваю: {img_url[:50]}...")
-                            img_data = req.get(img_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'}).content
-                            send_message(vk, user_id, f"✅ Скачано: {len(img_data)} байт")
-
-                            upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
-                            files = {'photo': ('reddit.jpg', img_data, 'image/jpeg')}
-                            up = req.post(upload_server['upload_url'], files=files).json()
-
-                            if 'photo' in up and up['photo']:
-                                saved = vk_user.photos.saveWallPhoto(
-                                    photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID
-                                )
-                                if saved:
-                                    photo = saved[0]
-                                    attachments.append(f"photo{photo['owner_id']}_{photo['id']}")
-                                    send_message(vk, user_id, f"✅ Фото загружено!")
-                                else:
-                                    errors.append("saveWallPhoto вернул пусто")
-                            else:
-                                errors.append(f"Upload ответ: {up}")
-                        except Exception as e:
-                            errors.append(str(e))
-
-                    result = vk_user.wall.post(
-                        owner_id=-GROUP_ID,
-                        message=post_text[:4000],
-                        attachments=",".join(attachments) if attachments else None,
-                        from_group=1
-                    )
-                    add_published_post(result["post_id"], ADMIN_ID, post_text[:200])
-                    drafts[draft_id]["status"] = "published"
-                    save_drafts(drafts)
-
-                    msg = f"✅ Пост Reddit опубликован!"
-                    if attachments:
-                        msg += f" 📎 {len(attachments)} фото"
-                    if errors:
-                        msg += f"\n❌ Ошибки: {'; '.join(errors[:2])}"
-                    send_message(vk, user_id, msg, get_admin_main_keyboard())
-                else:
-                    send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
-
-            elif t.startswith("❌ редит удл "):
-                draft_id = t.split()[-1]
-                from reddit_handler import load_drafts, save_drafts
-                drafts = load_drafts()
-                if draft_id in drafts:
-                    del drafts[draft_id]
-                    save_drafts(drafts)
-                send_message(vk, user_id, "🗑 Пост Reddit удалён.", get_admin_main_keyboard())
 
             elif t == "🤖 ai-постер":
                 send_message(vk, user_id, "🤖 AI-постер:", get_ai_keyboard())
