@@ -1,3 +1,4 @@
+import multiprocessing
 import threading
 import logging
 import sys
@@ -11,6 +12,10 @@ from online_keeper import run_online_keeper
 from friend_acceptor import run_friend_acceptor
 from group_acceptor import run_group_acceptor
 from weekly_horoscope import run_weekly_horoscope
+
+def start_reddit():
+    from reddit_handler import run_reddit_handler
+    run_reddit_handler()
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -37,5 +42,8 @@ if __name__ == "__main__":
     threading.Thread(target=run_friend_acceptor, daemon=True).start()
     threading.Thread(target=run_group_acceptor, daemon=True).start()
     threading.Thread(target=run_weekly_horoscope, daemon=True).start()
+
+    # Reddit handler в отдельном процессе
+    multiprocessing.Process(target=start_reddit, daemon=True).start()
 
     run_messenger()
