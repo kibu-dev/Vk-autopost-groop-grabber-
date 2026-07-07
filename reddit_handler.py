@@ -84,4 +84,4 @@ def reddit_post():
 
 def run_reddit_handler():
     logging.info("📱 Reddit handler запущен на порту 4000")
-    app.run(host="0.0.0.0", port=4000)
+    app.run(host="0.0.0.0", port=3000)
