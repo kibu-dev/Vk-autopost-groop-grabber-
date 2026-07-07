@@ -5,6 +5,7 @@ from flask import Flask, request
 import vk_api
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from config import *
+from utils import add_to_moderation
 
 REDDIT_DRAFTS_FILE = "reddit_drafts.json"
 app = Flask(__name__)
@@ -55,14 +56,17 @@ def reddit_post():
         if url:
             msg += f"🔗 {url}"
 
+        # Добавляем в общую модерацию
+        add_to_moderation(draft_id, "reddit", ADMIN_ID, msg, "", "Reddit пост")
+
         vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
 
         keyboard = VkKeyboard(one_time=True)
         keyboard.add_button(f"✅ Реддит публ {draft_id}", VkKeyboardColor.POSITIVE)
         keyboard.add_line()
-        keyboard.add_button(f"✏️ Реддит ред {draft_id}", VkKeyboardColor.PRIMARY)
-        keyboard.add_line()
         keyboard.add_button(f"❌ Реддит удл {draft_id}", VkKeyboardColor.NEGATIVE)
+        keyboard.add_line()
+        keyboard.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
 
         vk_group.messages.send(
             user_id=ADMIN_ID,
@@ -72,7 +76,7 @@ def reddit_post():
             group_id=GROUP_ID
         )
 
-        logging.info(f"📱 Reddit пост {draft_id} отправлен админу")
+        logging.info(f"📱 Reddit пост {draft_id} отправлен в модерацию")
         return "ok"
     except Exception as e:
         logging.error(f"Reddit error: {e}")
