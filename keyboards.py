@@ -45,20 +45,13 @@ def get_admin_main_keyboard():
     k.add_button("🔙 Польз. меню", VkKeyboardColor.SECONDARY)
     return k
 
-def get_reddit_keyboard():
-    k = VkKeyboard(one_time=False)
-    k.add_button("📋 Просмотр постов", VkKeyboardColor.PRIMARY)
-    k.add_button("🗑 Очистить всё", VkKeyboardColor.NEGATIVE)
-    k.add_line()
-    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
-    return k
-
 def get_reddit_post_keyboard(has_text):
     k = VkKeyboard(one_time=False)
     k.add_button("⬅️ Предыдущий", VkKeyboardColor.PRIMARY)
     k.add_button("➡️ Следующий", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("✅ В очередь", VkKeyboardColor.POSITIVE)
+    k.add_button("📷 Только фото", VkKeyboardColor.POSITIVE)
     k.add_line()
     if has_text:
         k.add_button("🤖 ИИ перевод", VkKeyboardColor.PRIMARY)
@@ -68,26 +61,25 @@ def get_reddit_post_keyboard(has_text):
         k.add_button("✏️ Редактировать", VkKeyboardColor.PRIMARY)
         k.add_line()
     k.add_button("❌ Удалить", VkKeyboardColor.NEGATIVE)
+    k.add_button("🗑 Очистить всё", VkKeyboardColor.NEGATIVE)
     k.add_line()
-    k.add_button("🔙 Назад", VkKeyboardColor.SECONDARY)
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
 
 def get_donor_groups_keyboard():
     k = VkKeyboard(one_time=False)
-    k.add_button("📋 Список групп", VkKeyboardColor.PRIMARY)
     k.add_button("➕ Добавить группу", VkKeyboardColor.POSITIVE)
-    k.add_line()
     k.add_button("➖ Удалить группу", VkKeyboardColor.NEGATIVE)
-    k.add_button("🔙 Назад", VkKeyboardColor.SECONDARY)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
 
 def get_forbidden_words_keyboard():
     k = VkKeyboard(one_time=False)
-    k.add_button("📋 Список слов", VkKeyboardColor.PRIMARY)
     k.add_button("➕ Добавить слово", VkKeyboardColor.POSITIVE)
-    k.add_line()
     k.add_button("➖ Удалить слово", VkKeyboardColor.NEGATIVE)
-    k.add_button("🔙 Назад", VkKeyboardColor.SECONDARY)
+    k.add_line()
+    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
 
 def get_moderation_keyboard(post_id):
