@@ -126,8 +126,10 @@ def run_messenger():
                     if posted:
                         add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото", 0)
                         del drafts[draft_id]; save_drafts(drafts)
+                        total_images = len(d.get('images', []))
                         msg = f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!"
-                        if attachments: msg += f" 📸 {len(attachments)} фото"
+                        if attachments: msg += f" 📸 {len(attachments)}/{total_images} фото"
+                        if errors: msg += f"\n⚠️ Ошибок загрузки: {len(errors)}"
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, msg, get_admin_main_keyboard())
                     else:
@@ -200,7 +202,9 @@ def run_messenger():
                     if posted:
                         add_scheduled_post(pub_time, "Фото из Reddit", 0)
                         del drafts[draft_id]; save_drafts(drafts)
-                        msg = f"✅ Фото в очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}! 📸 {len(attachments)} фото"
+                        total_images = len(d.get('images', []))
+                        msg = f"✅ Фото в очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}! 📸 {len(attachments)}/{total_images} фото"
+                        if errors: msg += f"\n⚠️ Ошибок загрузки: {len(errors)}"
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, msg, get_admin_main_keyboard())
                     else:
