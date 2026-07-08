@@ -70,54 +70,54 @@ def run_messenger():
                                 'Referer': 'https://www.reddit.com/'
                             })
                             if resp.status_code != 200 or len(resp.content) < 1000:
-                                errors.append(f"Не картинка: {img_url[:50]}")
                                 continue
-
                             content_type = resp.headers.get('Content-Type', '')
                             if 'image' not in content_type and len(resp.content) < 5000:
-                                errors.append(f"Не изображение: {content_type}")
                                 continue
-
                             up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
                             up = req.post(up_server['upload_url'], files={'photo': ('r.jpg', resp.content, 'image/jpeg')}).json()
-
                             if 'photo' in up and up['photo']:
                                 saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
                                 if saved:
                                     attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
-                                    logging.info(f"📸 Фото загружено: {len(attachments)}")
-                            else:
-                                errors.append(f"Upload: {up}")
                         except Exception as e:
                             errors.append(str(e)[:100])
 
                     post_text = d.get('text', '')
-                    if d.get('title') and not post_text:
-                        post_text = d['title']
-                    elif d.get('title'):
-                        post_text = f"{d['title']}\n\n{post_text}"
-
-                    if not post_text and attachments:
-                        post_text = d.get('title', '')
+                    if d.get('title') and not post_text: post_text = d['title']
+                    elif d.get('title'): post_text = f"{d['title']}\n\n{post_text}"
+                    if not post_text and attachments: post_text = d.get('title', '')
 
                     pub_time = get_next_free_hour()
-                    vk_user.wall.post(
-                        owner_id=-GROUP_ID,
-                        message=post_text[:4000] if post_text else "",
-                        attachments=",".join(attachments) if attachments else None,
-                        from_group=1,
-                        publish_date=pub_time
-                    )
-                    add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото", 0)
-                    del drafts[draft_id]; save_drafts(drafts)
+                    posted = False
+                    for attempt in range(24):
+                        try:
+                            vk_user.wall.post(
+                                owner_id=-GROUP_ID,
+                                message=post_text[:4000] if post_text else "",
+                                attachments=",".join(attachments) if attachments else None,
+                                from_group=1,
+                                publish_date=pub_time
+                            )
+                            posted = True
+                            break
+                        except Exception as e:
+                            if "214" in str(e) or "already scheduled" in str(e):
+                                pub_time += 3600
+                                logging.info(f"⏰ Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
+                            else:
+                                logging.error(f"❌ Ошибка публикации: {e}")
+                                break
 
-                    msg = f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!"
-                    if attachments: msg += f" 📸 {len(attachments)} фото"
-                    if errors:
-                        msg += f"\n⚠️ {len(errors)} ошибок"
-                        logging.warning(f"Reddit фото ошибки: {errors}")
+                    if posted:
+                        add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото", 0)
+                        del drafts[draft_id]; save_drafts(drafts)
+                        msg = f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!"
+                        if attachments: msg += f" 📸 {len(attachments)} фото"
+                        send_message(vk, user_id, msg, get_admin_main_keyboard())
+                    else:
+                        send_message(vk, user_id, "❌ Ошибка публикации.", get_admin_main_keyboard())
 
-                    send_message(vk, user_id, msg, get_admin_main_keyboard())
                     admin_state.pop(user_id, None)
                     continue
 
