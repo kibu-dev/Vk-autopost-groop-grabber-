@@ -7,7 +7,7 @@ from datetime import datetime
 from config import *
 from utils import *
 from keyboards import *
-from ai_poster import generate_variants, parse_variants, load_prompt, ai_log, generate_text, translate_text
+from ai_poster import generate_variants, parse_variants, load_prompt, ai_log, generate_text, translate_text, rewrite_text
 from holidays import (
     get_holidays_config, save_holidays_config, generate_holidays_list,
     get_holiday_publish_time, create_holiday_post, generate_holiday_text
@@ -54,25 +54,39 @@ def run_messenger():
                     send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
 
-                if t == "⬅️ предыдущий": idx = (idx - 1) % len(ids)
-                elif t == "➡️ следующий": idx = (idx + 1) % len(ids)
+                if t == "⬅️ назад": idx = (idx - 1) % len(ids)
+                elif t == "➡️ вперёд": idx = (idx + 1) % len(ids)
 
-                elif t == "✅ в очередь":
+                elif t == "✅ опубликовать":
                     draft_id = ids[idx]; d = pending[draft_id]
                     attachments = []
                     errors = []
 
                     for img_url in d.get('images', [])[:10]:
                         try:
-                            resp = req.get(img_url, timeout=15, headers={
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                                'Referer': 'https://www.reddit.com/'
-                            })
-                            if resp.status_code != 200 or len(resp.content) < 1000:
-                                continue
-                            content_type = resp.headers.get('Content-Type', '')
-                            if 'image' not in content_type and len(resp.content) < 5000:
+                            headers_list = [
+                                {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                                    'Accept-Language': 'en-US,en;q=0.9',
+                                    'Referer': 'https://www.reddit.com/'
+                                },
+                                {
+                                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36',
+                                    'Accept': 'image/*',
+                                    'Referer': 'https://www.reddit.com/'
+                                }
+                            ]
+                            resp = None
+                            for headers in headers_list:
+                                try:
+                                    resp = req.get(img_url, timeout=20, headers=headers)
+                                    if resp.status_code == 200 and len(resp.content) >= 1000:
+                                        break
+                                except:
+                                    continue
+                            if not resp or resp.status_code != 200 or len(resp.content) < 1000:
+                                errors.append(f"HTTP {resp.status_code if resp else 'timeout'}")
                                 continue
                             up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
                             up = req.post(up_server['upload_url'], files={'photo': ('r.jpg', resp.content, 'image/jpeg')}).json()
@@ -124,17 +138,36 @@ def run_messenger():
                 elif t == "📷 только фото":
                     draft_id = ids[idx]; d = pending[draft_id]
                     if not d.get('images'):
-                        send_message(vk, user_id, "❌ Нет фото в этом посте.", get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                        send_message(vk, user_id, "❌ Нет фото в этом посте.", get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
                         continue
+                    send_message(vk, user_id, "⏳ Загружаю фото...")
                     attachments = []
+                    errors = []
                     for img_url in d.get('images', [])[:10]:
                         try:
-                            resp = req.get(img_url, timeout=15, headers={
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                                'Referer': 'https://www.reddit.com/'
-                            })
-                            if resp.status_code != 200 or len(resp.content) < 1000:
+                            headers_list = [
+                                {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                                    'Accept-Language': 'en-US,en;q=0.9',
+                                    'Referer': 'https://www.reddit.com/'
+                                },
+                                {
+                                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36',
+                                    'Accept': 'image/*',
+                                    'Referer': 'https://www.reddit.com/'
+                                }
+                            ]
+                            resp = None
+                            for headers in headers_list:
+                                try:
+                                    resp = req.get(img_url, timeout=20, headers=headers)
+                                    if resp.status_code == 200 and len(resp.content) >= 1000:
+                                        break
+                                except:
+                                    continue
+                            if not resp or resp.status_code != 200 or len(resp.content) < 1000:
+                                errors.append(f"HTTP {resp.status_code if resp else 'timeout'}")
                                 continue
                             up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
                             up = req.post(up_server['upload_url'], files={'photo': ('r.jpg', resp.content, 'image/jpeg')}).json()
@@ -142,10 +175,10 @@ def run_messenger():
                                 saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
                                 if saved:
                                     attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
-                        except:
-                            pass
+                        except Exception as e:
+                            errors.append(str(e)[:80])
                     if not attachments:
-                        send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                        send_message(vk, user_id, f"❌ Не удалось загрузить фото. Ошибок: {len(errors)}", get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
                         continue
                     pub_time = get_next_free_hour()
                     posted = False
@@ -171,13 +204,13 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, msg, get_admin_main_keyboard())
                     else:
-                        send_message(vk, user_id, "❌ Ошибка публикации.", get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                        send_message(vk, user_id, "❌ Ошибка публикации.", get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
                     continue
 
-                elif "ии перевод" in t:
+                elif "перевести" in t:
                     draft_id = ids[idx]; d = pending[draft_id]
                     original_text = d.get("original_text", d.get("text", ""))
-                    original_title = d.get("title", "")
+                    original_title = d.get("original_title", d.get("title", ""))
 
                     if original_title:
                         send_message(vk, user_id, "⏳ Перевожу заголовок...")
@@ -203,18 +236,18 @@ def run_messenger():
                         if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
                         if d.get('url'): msg += f"🔗 {d['url']}"
                         admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
                     else:
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
 
-                elif "ии рерайт" in t:
+                elif "перефразировать" in t:
                     draft_id = ids[idx]; d = pending[draft_id]
                     original = d.get("text", "")
                     if original:
                         send_message(vk, user_id, "⏳ Перефразирую...")
-                        rewritten = generate_text(f"Перефразируй этот текст своими словами, сохрани смысл:\n\n{original[:2000]}")
+                        rewritten = rewrite_text(original)
                         if rewritten:
                             drafts[draft_id]["text"] = rewritten; save_drafts(drafts)
                             send_message(vk, user_id, f"✅ Готово!")
@@ -230,13 +263,13 @@ def run_messenger():
                         if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
                         if d.get('url'): msg += f"🔗 {d['url']}"
                         admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
                     else:
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
 
-                elif "редактировать" in t:
+                elif "править" in t:
                     admin_state[user_id] = {"mode": "reddit_edit_title", "draft_id": ids[idx]}
                     send_message(vk, user_id, "✏️ Введите новый заголовок (или '-' чтобы оставить):", get_cancel_keyboard())
                     continue
@@ -253,20 +286,13 @@ def run_messenger():
                         if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
                         if d.get('url'): msg += f"🔗 {d['url']}"
                         admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
                     else:
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
 
-                elif t == "🗑 очистить всё":
-                    drafts = {k: v for k, v in drafts.items() if v.get("status") != "pending"}
-                    save_drafts(drafts)
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "🗑 Все посты Reddit удалены.", get_admin_main_keyboard())
-                    continue
-
-                elif t == "🔙 назад в админку":
+                elif t == "🔙 в админку":
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
                     continue
@@ -284,7 +310,7 @@ def run_messenger():
                 if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
                 if d.get('url'): msg += f"🔗 {d['url']}"
                 admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
                 continue
 
             # AI-постер
@@ -529,7 +555,7 @@ def run_messenger():
                 if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
                 if d.get('url'): msg += f"🔗 {d['url']}"
                 admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": 0}
-                send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
 
             elif t == "📊 статистика":
                 s = get_stats(); from reddit_handler import load_drafts
