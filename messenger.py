@@ -33,13 +33,11 @@ def run_messenger():
         text = event.text.strip() if event.text else ""
         is_admin = (user_id == ADMIN_ID)
 
-        # ─── ОБРАБОТКА СОСТОЯНИЙ ───
         if is_admin and user_id in admin_state:
             state = admin_state[user_id]
             mode = state.get("mode")
             t = text.lower()
 
-            # AI-постер
             if mode == "ai_post":
                 if t in ["🔙 отмена", "❌ отмена"]:
                     admin_state.pop(user_id, None)
@@ -50,12 +48,9 @@ def run_messenger():
                     msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
                     if msg and msg.get("items"):
                         for att in msg["items"][0].get("attachments", []):
-                            att_type = att.get("type")
-                            att_obj = att.get(att_type, {})
-                            oid = att_obj.get("owner_id")
-                            iid = att_obj.get("id")
-                            if oid and iid:
-                                attachments.append(f"{att_type}{oid}_{iid}")
+                            att_type = att.get("type"); att_obj = att.get(att_type, {})
+                            oid = att_obj.get("owner_id"); iid = att_obj.get("id")
+                            if oid and iid: attachments.append(f"{att_type}{oid}_{iid}")
                 except: pass
                 admin_state[user_id] = {"mode": "ai_choose", "text": text, "variants": [], "attachments": attachments}
                 send_message(vk, user_id, "⏳ Генерирую пост...")
@@ -81,9 +76,7 @@ def run_messenger():
                     add_published_post(r["post_id"], ADMIN_ID, chosen)
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "✅ Опубликовано!" + (" 📎" if att else ""), get_admin_main_keyboard())
-                elif t == "✏️ свой текст":
-                    admin_state[user_id]["mode"] = "ai_custom"
-                    send_message(vk, user_id, "✏️ Напишите свой текст:", get_cancel_keyboard())
+                elif t == "✏️ свой текст": admin_state[user_id] = {"mode": "ai_custom"}; send_message(vk, user_id, "✏️ Напишите свой текст:", get_cancel_keyboard())
                 elif t == "🔄 ещё вариант":
                     result = generate_variants(state["text"])
                     if result:
@@ -91,150 +84,93 @@ def run_messenger():
                         if variants and len(variants[0]) > 20:
                             state["variants"] = variants
                             send_message(vk, user_id, f"🤖 Новый вариант:\n\n{variants[0]}", get_variants_keyboard())
-                        else:
-                            send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
-                    else:
-                        send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
-                elif t == "❌ отмена":
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
+                        else: send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
+                    else: send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
+                elif t == "❌ отмена": admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                 continue
 
             if mode == "ai_custom":
-                if t in ["🔙 отмена", "❌ отмена"]:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                    continue
+                if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
                 att = ",".join(state.get("attachments", [])) or None
                 r = vk_user.wall.post(owner_id=-GROUP_ID, message=text, attachments=att, from_group=1)
-                add_published_post(r["post_id"], ADMIN_ID, text)
-                admin_state.pop(user_id, None)
-                send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard())
-                continue
+                add_published_post(r["post_id"], ADMIN_ID, text); admin_state.pop(user_id, None)
+                send_message(vk, user_id, "✅ Опубликовано!", get_admin_main_keyboard()); continue
 
-            # Редактирование Reddit
             if mode == "reddit_edit":
-                if t in ["🔙 отмена", "❌ отмена"]:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                    continue
+                if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
                 draft_id = state.get("draft_id")
                 from reddit_handler import load_drafts, save_drafts
                 drafts = load_drafts()
-                if draft_id in drafts:
-                    drafts[draft_id]["text"] = text
-                    save_drafts(drafts)
-                    send_message(vk, user_id, "✅ Текст обновлён! Нажмите «Назад» для возврата.", get_admin_main_keyboard())
-                else:
-                    send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
-                admin_state.pop(user_id, None)
-                continue
+                if draft_id in drafts: drafts[draft_id]["text"] = text; save_drafts(drafts); send_message(vk, user_id, "✅ Текст обновлён!", get_admin_main_keyboard())
+                else: send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
+                admin_state.pop(user_id, None); continue
 
-            # Гороскоп
             if mode == "horoscope_photo":
-                if t in ["🔙 отмена", "❌ отмена"]:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                    continue
+                if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
                 photo_saved = False
                 try:
                     msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
                     if msg and msg.get("items"):
                         for att in msg["items"][0].get("attachments", []):
                             if att.get("type") == "photo":
-                                att_obj = att.get("photo", {})
-                                sizes = att_obj.get("sizes", [])
+                                att_obj = att.get("photo", {}); sizes = att_obj.get("sizes", [])
                                 if sizes:
                                     biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                                    photo_url = biggest.get("url")
-                                    if photo_url:
-                                        img_data = req.get(photo_url).content
-                                        upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
-                                        files = {'photo': ('horoscope.jpg', img_data, 'image/jpeg')}
-                                        up = req.post(upload_server['upload_url'], files=files).json()
+                                    if biggest.get("url"):
+                                        img_data = req.get(biggest["url"]).content
+                                        up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                                        up = req.post(up_server['upload_url'], files={'photo': ('h.jpg', img_data, 'image/jpeg')}).json()
                                         if 'photo' in up and up['photo']:
                                             saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
-                                            if saved:
-                                                set_horoscope_photo(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
-                                                photo_saved = True
+                                            if saved: set_horoscope_photo(f"photo{saved[0]['owner_id']}_{saved[0]['id']}"); photo_saved = True
                                         break
-                except Exception as e:
-                    logging.error(f"HOROSCOPE UPLOAD ERROR: {e}")
+                except: pass
                 send_message(vk, user_id, "✅ Фото сохранено!" if photo_saved else "❌ Не удалось.", get_horoscope_keyboard())
-                admin_state.pop(user_id, None)
-                continue
+                admin_state.pop(user_id, None); continue
 
-            # Праздники
             if mode == "holiday_post":
-                if t in ["🔙 отмена", "❌ отмена"]:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                    continue
+                if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
                 photo_saved = False
                 try:
                     msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
                     if msg and msg.get("items"):
                         for att in msg["items"][0].get("attachments", []):
                             if att.get("type") == "photo":
-                                att_obj = att.get("photo", {})
-                                sizes = att_obj.get("sizes", [])
+                                att_obj = att.get("photo", {}); sizes = att_obj.get("sizes", [])
                                 if sizes:
                                     biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                                    photo_url = biggest.get("url")
-                                    if photo_url:
-                                        img_data = req.get(photo_url).content
-                                        upload_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
-                                        files = {'photo': ('holiday.jpg', img_data, 'image/jpeg')}
-                                        up = req.post(upload_server['upload_url'], files=files).json()
+                                    if biggest.get("url"):
+                                        img_data = req.get(biggest["url"]).content
+                                        up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                                        up = req.post(up_server['upload_url'], files={'photo': ('hol.jpg', img_data, 'image/jpeg')}).json()
                                         if 'photo' in up and up['photo']:
                                             saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
                                             if saved:
-                                                config = get_holidays_config()
-                                                config["photo_id"] = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
-                                                save_holidays_config(config)
-                                                photo_saved = True
+                                                config = get_holidays_config(); config["photo_id"] = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"; save_holidays_config(config); photo_saved = True
                                         break
-                except Exception as e:
-                    logging.error(f"HOLIDAY UPLOAD ERROR: {e}")
+                except: pass
                 if photo_saved:
-                    config = get_holidays_config()
-                    name = config.get("selected_name", "")
-                    send_message(vk, user_id, f"✅ Фото сохранено!\n⏳ Генерирую поздравление для: {name}")
+                    config = get_holidays_config(); name = config.get("selected_name", "")
+                    send_message(vk, user_id, f"✅ Фото сохранено!\n⏳ Генерирую для: {name}")
                     txt = generate_holiday_text(name)
-                    if txt:
-                        config["generated_text"] = txt
-                        save_holidays_config(config)
-                        send_message(vk, user_id, f"🤖 Готовое поздравление:\n\n{txt[:1500]}", get_holiday_confirm_keyboard())
-                    else:
-                        send_message(vk, user_id, "❌ Не удалось сгенерировать текст.", get_holidays_keyboard())
-                else:
-                    send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_holidays_keyboard())
-                admin_state.pop(user_id, None)
-                continue
+                    if txt: config["generated_text"] = txt; save_holidays_config(config); send_message(vk, user_id, f"🤖 Готово:\n\n{txt[:1500]}", get_holiday_confirm_keyboard())
+                    else: send_message(vk, user_id, "❌ Не удалось.", get_holidays_keyboard())
+                else: send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_holidays_keyboard())
+                admin_state.pop(user_id, None); continue
 
             if mode == "holiday_custom":
-                if t in ["🔙 отмена", "❌ отмена"]:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                    continue
-                config = get_holidays_config()
-                config["generated_text"] = text
-                save_holidays_config(config)
-                admin_state.pop(user_id, None)
-                send_message(vk, user_id, f"📝 Ваш текст:\n\n{text[:500]}...", get_holiday_confirm_keyboard())
-                continue
+                if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
+                config = get_holidays_config(); config["generated_text"] = text; save_holidays_config(config); admin_state.pop(user_id, None)
+                send_message(vk, user_id, f"📝 Ваш текст:\n\n{text[:500]}...", get_holiday_confirm_keyboard()); continue
 
             if t in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
-                admin_state.pop(user_id, None)
-                send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
-                continue
+                admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
 
             if mode == "add_donor":
                 gid = resolve_group_id(vk_user, text.strip())
                 if gid: add_donor_group(gid); send_message(vk, user_id, f"✅ [{get_group_name(vk_user, gid)}] добавлена!", get_donor_groups_keyboard())
                 else: send_message(vk, user_id, "❌ Не найдена.", get_back_admin_keyboard())
-            elif mode == "add_word":
-                add_forbidden_word(text.strip().lower()); send_message(vk, user_id, "✅ Добавлено!", get_forbidden_words_keyboard())
+            elif mode == "add_word": add_forbidden_word(text.strip().lower()); send_message(vk, user_id, "✅ Добавлено!", get_forbidden_words_keyboard())
             elif mode == "del_word":
                 w = text.strip().lower()
                 if w in get_forbidden_words(): remove_forbidden_word(w); send_message(vk, user_id, "✅ Удалено!", get_forbidden_words_keyboard())
@@ -258,24 +194,20 @@ def run_messenger():
             continue
 
         t = text.lower()
+        t_orig = text.strip()
 
         if t in ["начать", "меню", "start"]:
             send_message(vk, user_id, "👋 Привет!", get_admin_main_keyboard() if is_admin else get_main_keyboard())
         elif t == "🗑 удалить мой пост":
             posts = get_user_posts(user_id)
             send_message(vk, user_id, f"📋 Постов: {len(posts)}" if posts else "📭 Нет постов.", get_posts_keyboard(posts) if posts else get_main_keyboard())
-        elif t == "🆘 написать в поддержку":
-            waiting_support.add(user_id); send_message(vk, user_id, "📝 Пишите:", get_cancel_keyboard())
-        elif t == "🔙 отмена":
-            send_message(vk, user_id, "Меню:", get_admin_main_keyboard() if is_admin else get_main_keyboard())
-        elif t == "❌ нет":
-            selected_post.pop(user_id, None); send_message(vk, user_id, "Отменено.", get_main_keyboard())
+        elif t == "🆘 написать в поддержку": waiting_support.add(user_id); send_message(vk, user_id, "📝 Пишите:", get_cancel_keyboard())
+        elif t == "🔙 отмена": send_message(vk, user_id, "Меню:", get_admin_main_keyboard() if is_admin else get_main_keyboard())
+        elif t == "❌ нет": selected_post.pop(user_id, None); send_message(vk, user_id, "Отменено.", get_main_keyboard())
         elif t == "✅ да, удалить" and user_id in selected_post:
             pid = selected_post[user_id]
             if get_post_author(pid) == user_id:
-                try:
-                    vk_user.wall.delete(owner_id=-GROUP_ID, post_id=pid); delete_user_post(user_id, pid)
-                    send_message(vk, user_id, f"✅ #{pid} удалён!", get_main_keyboard())
+                try: vk_user.wall.delete(owner_id=-GROUP_ID, post_id=pid); delete_user_post(user_id, pid); send_message(vk, user_id, f"✅ #{pid} удалён!", get_main_keyboard())
                 except: send_message(vk, user_id, "❌ Ошибка.", get_main_keyboard())
             else: send_message(vk, user_id, "❌ Не ваш пост!", get_main_keyboard())
             selected_post.pop(user_id, None)
@@ -283,26 +215,20 @@ def run_messenger():
             m = re.search(r"🗑 (\d+)\.", t)
             if m:
                 idx = int(m.group(1)) - 1; posts = get_user_posts(user_id)
-                if 0 <= idx < len(posts):
-                    selected_post[user_id] = posts[idx]['post_id']
-                    send_message(vk, user_id, f"⚠️ Удалить #{posts[idx]['post_id']}?", get_confirm_keyboard())
+                if 0 <= idx < len(posts): selected_post[user_id] = posts[idx]['post_id']; send_message(vk, user_id, f"⚠️ Удалить #{posts[idx]['post_id']}?", get_confirm_keyboard())
 
         elif is_admin:
-            if t in ["🔙 назад в админку", "🔙 назад"]:
-                admin_state.pop(user_id, None); send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
+            if t in ["🔙 назад в админку", "🔙 назад"]: admin_state.pop(user_id, None); send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
             elif t == "🔙 пользовательское меню": send_message(vk, user_id, "Меню:", get_main_keyboard())
-
             elif t == "📢 модерация":
                 posts = get_moderation_posts(); pending = get_pending_grabs()
-                if posts or pending:
-                    if posts:
-                        send_message(vk, user_id, f"👤 Подозрительные ({len(posts)}):", get_admin_main_keyboard())
-                        for p in posts[:10]: send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}", get_moderation_keyboard(p['post_id']))
-                    if pending:
-                        send_message(vk, user_id, f"🎣 Граббер ({len(pending)}):", get_admin_main_keyboard())
-                        for i, p in enumerate(pending[:10]): send_message(vk, user_id, f"🚨 #{i+1} ({p['reason']})\nИз группы: {p['from_group']}\n\n{p['post']['text'][:300]}", get_pending_grab_keyboard(i))
-                else: send_message(vk, user_id, "✅ Пусто.", get_admin_main_keyboard())
-
+                if posts:
+                    send_message(vk, user_id, f"👤 Подозрительные ({len(posts)}):", get_admin_main_keyboard())
+                    for p in posts[:10]: send_message(vk, user_id, f"🚨 #{p['post_id']} ({p['reason']})\n\n{p['text'][:300]}", get_moderation_keyboard(p['post_id']))
+                if pending:
+                    send_message(vk, user_id, f"🎣 Граббер ({len(pending)}):", get_admin_main_keyboard())
+                    for i, p in enumerate(pending[:10]): send_message(vk, user_id, f"🚨 #{i+1} ({p['reason']})\nИз: {p['from_group']}\n\n{p['post']['text'][:300]}", get_pending_grab_keyboard(i))
+                if not posts and not pending: send_message(vk, user_id, "✅ Пусто.", get_admin_main_keyboard())
             elif t == "📅 очередь постов":
                 sched = get_scheduled_posts()
                 if sched:
@@ -310,25 +236,19 @@ def run_messenger():
                     for p in sched[:10]: msg += f"• {datetime.fromtimestamp(p['time']).strftime('%d.%m %H:%M')} — {p['text'][:50]}...\n"
                     send_message(vk, user_id, msg, get_scheduled_keyboard())
                 else: send_message(vk, user_id, "📭 Пусто.", get_admin_main_keyboard())
-
             elif t == "👥 группы-доноры": send_message(vk, user_id, "Группы:", get_donor_groups_keyboard())
             elif t == "🚫 запрет-слова": send_message(vk, user_id, "Слова:", get_forbidden_words_keyboard())
 
             elif t == "📱 reddit":
                 from reddit_handler import load_drafts
-                drafts = load_drafts()
-                pending = [v for v in drafts.values() if v.get("status") == "pending"]
+                drafts = load_drafts(); pending = [v for v in drafts.values() if v.get("status") == "pending"]
                 send_message(vk, user_id, f"📱 Reddit постов: {len(pending)}" if pending else "📱 Нет новых постов.", get_reddit_keyboard())
 
             elif t == "📋 просмотр постов":
                 from reddit_handler import load_drafts
-                drafts = load_drafts()
-                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
-                if not pending:
-                    send_message(vk, user_id, "📱 Нет постов.", get_reddit_keyboard())
-                    continue
-                ids = list(pending.keys())
-                d = pending[ids[0]]
+                drafts = load_drafts(); pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                if not pending: send_message(vk, user_id, "📱 Нет постов.", get_reddit_keyboard()); continue
+                ids = list(pending.keys()); d = pending[ids[0]]
                 msg = f"📱 Пост 1/{len(ids)} | {d.get('subreddit', '')}\n\n"
                 if d.get('title'): msg += f"📌 {d['title']}\n\n"
                 if d.get('text'): msg += f"{d['text'][:500]}\n\n"
@@ -339,28 +259,20 @@ def run_messenger():
 
             elif t == "🗑 очистить всё":
                 from reddit_handler import load_drafts, save_drafts
-                drafts = load_drafts()
-                drafts = {k: v for k, v in drafts.items() if v.get("status") != "pending"}
-                save_drafts(drafts)
-                send_message(vk, user_id, "🗑 Все посты Reddit удалены.", get_admin_main_keyboard())
+                drafts = load_drafts(); drafts = {k: v for k, v in drafts.items() if v.get("status") != "pending"}
+                save_drafts(drafts); send_message(vk, user_id, "🗑 Все посты Reddit удалены.", get_admin_main_keyboard())
 
-            # Reddit navigation (когда в режиме просмотра)
+            # === REDDIT NAVIGATION ===
             elif is_admin and user_id in admin_state and admin_state[user_id].get("mode") == "reddit_view":
                 state = admin_state[user_id]
                 from reddit_handler import load_drafts, save_drafts
-                drafts = load_drafts()
-                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
-                ids = state.get("ids", [])
-                idx = state.get("index", 0)
+                drafts = load_drafts(); pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                ids = state.get("ids", []); idx = state.get("index", 0)
 
-                if not pending:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
-                    continue
+                if not pending: admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard()); continue
 
                 if t == "⬅️ предыдущий": idx = (idx - 1) % len(ids)
                 elif t == "➡️ следующий": idx = (idx + 1) % len(ids)
-
                 elif t == "✅ в очередь":
                     draft_id = ids[idx]; d = pending[draft_id]
                     attachments = []
@@ -382,10 +294,9 @@ def run_messenger():
                     add_scheduled_post(pub_time, post_text[:200], 0)
                     del drafts[draft_id]; save_drafts(drafts)
                     send_message(vk, user_id, f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None)
-                    continue
+                    admin_state.pop(user_id, None); continue
 
-                elif t == "🤖 ии перевод":
+                elif "ии перевод" in t:
                     draft_id = ids[idx]; d = pending[draft_id]
                     original = d.get("original_text", d.get("text", ""))
                     if original:
@@ -393,12 +304,11 @@ def run_messenger():
                         translated = translate_text(original)
                         if translated:
                             drafts[draft_id]["text"] = translated; drafts[draft_id]["translated"] = True; save_drafts(drafts)
-                            pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}; d = pending[ids[idx]]
                             send_message(vk, user_id, f"✅ Переведено!\n\n{translated[:500]}", get_admin_main_keyboard())
                         else: send_message(vk, user_id, "❌ Ошибка перевода.", get_admin_main_keyboard())
                     admin_state.pop(user_id, None); continue
 
-                elif t == "🔄 ии рерайт":
+                elif "ии рерайт" in t:
                     draft_id = ids[idx]; d = pending[draft_id]
                     original = d.get("text", "")
                     if original:
@@ -406,35 +316,25 @@ def run_messenger():
                         rewritten = generate_text(f"Перефразируй этот текст своими словами, сохрани смысл:\n\n{original[:2000]}")
                         if rewritten:
                             drafts[draft_id]["text"] = rewritten; save_drafts(drafts)
-                            pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}; d = pending[ids[idx]]
                             send_message(vk, user_id, f"✅ Готово!\n\n{rewritten[:500]}", get_admin_main_keyboard())
                         else: send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
                     admin_state.pop(user_id, None); continue
 
-                elif t == "✏️ редактировать":
+                elif "редактировать" in t:
                     admin_state[user_id] = {"mode": "reddit_edit", "draft_id": ids[idx]}
-                    send_message(vk, user_id, "✏️ Напишите новый текст:", get_cancel_keyboard())
-                    continue
+                    send_message(vk, user_id, "✏️ Напишите новый текст:", get_cancel_keyboard()); continue
 
-                elif t == "❌ удалить":
+                elif "удалить" in t:
                     del drafts[ids[idx]]; save_drafts(drafts)
                     send_message(vk, user_id, "🗑 Удалён.", get_admin_main_keyboard())
                     admin_state.pop(user_id, None); continue
 
-                elif t == "🔙 назад":
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "📱 Reddit", get_reddit_keyboard())
-                    continue
+                elif t == "🔙 назад": admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Reddit", get_reddit_keyboard()); continue
 
-                # Обновить и показать текущий
-                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
-                ids = list(pending.keys())
-                if not ids:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
-                    continue
-                idx = min(idx, len(ids) - 1)
-                d = pending[ids[idx]]
+                # Refresh
+                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}; ids = list(pending.keys())
+                if not ids: admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard()); continue
+                idx = min(idx, len(ids) - 1); d = pending[ids[idx]]
                 msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
                 if d.get('title'): msg += f"📌 {d['title']}\n\n"
                 if d.get('text'): msg += f"{d['text'][:500]}\n\n"
@@ -446,16 +346,13 @@ def run_messenger():
             elif t == "📊 статистика":
                 s = get_stats()
                 from reddit_handler import load_drafts
-                drafts = load_drafts()
-                reddit_pending = len([v for v in drafts.values() if v.get("status") == "pending"])
-                msg = (f"📊 Статистика:\n• Опубликовано: {s['total_published']}\n• Запланировано: {s['scheduled_count']}\n• Взято граббером: {s['total_grabbed']}\n• На модерации: {s['pending_moderation']}\n• Reddit: {reddit_pending}\n• Доноров: {s['donor_count']}")
+                drafts = load_drafts(); reddit_pending = len([v for v in drafts.values() if v.get("status") == "pending"])
+                msg = f"📊 Статистика:\n• Опубликовано: {s['total_published']}\n• Запланировано: {s['scheduled_count']}\n• Взято граббером: {s['total_grabbed']}\n• На модерации: {s['pending_moderation']}\n• Reddit: {reddit_pending}\n• Доноров: {s['donor_count']}"
                 send_message(vk, user_id, msg, get_admin_main_keyboard())
 
             elif t == "📋 список групп":
                 donors = get_donor_groups()
-                if donors:
-                    lines = [f"• {g} — {get_group_name(vk_user, g)}" for g in donors]
-                    send_message(vk, user_id, "\n".join(lines), get_donor_groups_keyboard())
+                if donors: send_message(vk, user_id, "\n".join([f"• {g} — {get_group_name(vk_user, g)}" for g in donors]), get_donor_groups_keyboard())
                 else: send_message(vk, user_id, "📭 Пусто.", get_donor_groups_keyboard())
             elif t == "➕ добавить группу": admin_state[user_id] = {"mode": "add_donor"}; send_message(vk, user_id, "Введите ID/ссылку:", get_back_admin_keyboard())
             elif t == "➖ удалить группу":
@@ -508,15 +405,12 @@ def run_messenger():
                 except: send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
 
             elif t == "⚙️ автоматизация": send_message(vk, user_id, "⚙️ Автоматизация:", get_automation_keyboard())
-
-            elif t == "❤️ автолайкер":
-                send_message(vk, user_id, f"❤️ Автолайкер: {'Включен ✅' if is_liker_enabled() else 'Выключен ❌'}", get_liker_keyboard())
+            elif t == "❤️ автолайкер": send_message(vk, user_id, f"❤️ Автолайкер: {'Включен ✅' if is_liker_enabled() else 'Выключен ❌'}", get_liker_keyboard())
             elif t == "▶️ включить лайкер": set_liker_enabled(True); send_message(vk, user_id, "❤️ Включен!", get_liker_keyboard())
             elif t == "⏸️ выключить лайкер": set_liker_enabled(False); send_message(vk, user_id, "❤️ Выключен.", get_liker_keyboard())
             elif t == "📋 лайк группы":
                 groups = get_liker_groups()
-                lines = [f"• {g} — {get_group_name(vk_user, g)}" for g in groups] if groups else []
-                send_message(vk, user_id, "\n".join(lines) if lines else "📭 Пусто.", get_liker_keyboard())
+                send_message(vk, user_id, "\n".join([f"• {g} — {get_group_name(vk_user, g)}" for g in groups]) if groups else "📭 Пусто.", get_liker_keyboard())
             elif t == "➕ лайк группу": admin_state[user_id] = {"mode": "add_liker"}; send_message(vk, user_id, "Введите ID группы:", get_back_admin_keyboard())
             elif t == "➖ лайк группу":
                 groups = get_liker_groups()
@@ -530,29 +424,24 @@ def run_messenger():
             elif t == "📊 лайк стата":
                 s = get_liker_stats(); send_message(vk, user_id, f"❤️ Статистика:\n• Сегодня: {s['today']}/20\n• Всего: {s['total']}", get_liker_keyboard())
 
-            elif t == "🟢 вечный онлайн":
-                send_message(vk, user_id, f"🟢 Онлайн: {'Включен ✅' if is_online_enabled() else 'Выключен ❌'}", get_online_keyboard())
+            elif t == "🟢 вечный онлайн": send_message(vk, user_id, f"🟢 Онлайн: {'Включен ✅' if is_online_enabled() else 'Выключен ❌'}", get_online_keyboard())
             elif t == "▶️ включить онлайн": set_online_enabled(True); send_message(vk, user_id, "🟢 Включен!", get_online_keyboard())
             elif t == "⏸️ выключить онлайн": set_online_enabled(False); send_message(vk, user_id, "🟢 Выключен.", get_online_keyboard())
 
             elif t == "🤝 приём друзей":
-                s = get_friend_stats()
-                send_message(vk, user_id, f"🤝 Друзья: {'Включен ✅' if is_friend_enabled() else 'Выключен ❌'}\nПринято: {s['accepted']}", get_friend_keyboard())
+                s = get_friend_stats(); send_message(vk, user_id, f"🤝 Друзья: {'Включен ✅' if is_friend_enabled() else 'Выключен ❌'}\nПринято: {s['accepted']}", get_friend_keyboard())
             elif t == "▶️ включить друзей": set_friend_enabled(True); send_message(vk, user_id, "🤝 Включено!", get_friend_keyboard())
             elif t == "⏸️ выключить друзей": set_friend_enabled(False); send_message(vk, user_id, "🤝 Выключено.", get_friend_keyboard())
 
             elif t == "👥 приём в группу":
-                s = get_group_accept_stats()
-                send_message(vk, user_id, f"👥 Приём в группу: {'Включен ✅' if is_group_accept_enabled() else 'Выключен ❌'}\nПринято: {s['accepted']}", get_group_accept_keyboard())
+                s = get_group_accept_stats(); send_message(vk, user_id, f"👥 Приём в группу: {'Включен ✅' if is_group_accept_enabled() else 'Выключен ❌'}\nПринято: {s['accepted']}", get_group_accept_keyboard())
             elif t == "▶️ включить группу": set_group_accept_enabled(True); send_message(vk, user_id, "👥 Включен!", get_group_accept_keyboard())
             elif t == "⏸️ выключить группу": set_group_accept_enabled(False); send_message(vk, user_id, "👥 Выключен.", get_group_accept_keyboard())
 
             elif t == "🔮 гороскоп":
                 config = load_json("horoscope_config.json", {})
-                status = "Включен ✅" if get_horoscope_enabled() else "Выключен ❌"
-                next_m = get_horoscope_next_monday()
-                next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
-                msg = f"🔮 Гороскоп: {status}\nСледующий: {next_str}"
+                next_m = get_horoscope_next_monday(); next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
+                msg = f"🔮 Гороскоп: {'Включен ✅' if get_horoscope_enabled() else 'Выключен ❌'}\nСледующий: {next_str}"
                 if config.get("text"): msg += f"\n\n📝 Текст:\n{config['text'][:2500]}"
                 send_message(vk, user_id, msg, get_horoscope_keyboard())
             elif t == "удалить и пересоздать":
@@ -560,8 +449,8 @@ def run_messenger():
                 send_message(vk, user_id, "🔄 Создаю новый гороскоп...")
                 from weekly_horoscope import create_horoscope
                 if create_horoscope():
-                    config = load_json("horoscope_config.json", {})
-                    next_m = config.get("next_monday", ""); next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
+                    config = load_json("horoscope_config.json", {}); next_m = config.get("next_monday", "")
+                    next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
                     msg = f"✅ Готово!\n🔮 Гороскоп: {'Включен ✅' if get_horoscope_enabled() else 'Выключен ❌'}\nСледующий: {next_str}"
                     if config.get("text"): msg += f"\n\n📝 Текст:\n{config['text'][:2500]}"
                     send_message(vk, user_id, msg, get_horoscope_keyboard())
@@ -578,8 +467,7 @@ def run_messenger():
             elif t == "🎉 праздники":
                 config = get_holidays_config()
                 if not config.get("holidays_list"):
-                    send_message(vk, user_id, "⏳ Загружаю...")
-                    holidays = generate_holidays_list()
+                    send_message(vk, user_id, "⏳ Загружаю..."); holidays = generate_holidays_list()
                     if holidays: config["holidays_list"] = holidays; config["current_index"] = 0; save_holidays_config(config)
                     else: send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard()); continue
                 holidays = config.get("holidays_list", []); idx = config.get("current_index", 0)
@@ -626,9 +514,7 @@ def run_messenger():
 
             elif t == "🤖 ai-постер": send_message(vk, user_id, "🤖 AI-постер:", get_ai_keyboard())
             elif t == "📋 промт": send_message(vk, user_id, f"📋 Текущий промт:\n\n{load_prompt()}", get_ai_keyboard())
-            elif t == "✍️ создать пост":
-                admin_state[user_id] = {"mode": "ai_post"}
-                send_message(vk, user_id, "📝 Пришлите текст и фото:", get_cancel_keyboard())
+            elif t == "✍️ создать пост": admin_state[user_id] = {"mode": "ai_post"}; send_message(vk, user_id, "📝 Пришлите текст и фото:", get_cancel_keyboard())
 
         else:
             send_message(vk, user_id, "Нажмите кнопку.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
