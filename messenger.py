@@ -33,6 +33,9 @@ def run_messenger():
         text = event.text.strip() if event.text else ""
         is_admin = (user_id == ADMIN_ID)
 
+        # === ЛОГИРОВАНИЕ ===
+        logging.info(f"MSG: '{text[:80]}' | ADMIN: {is_admin} | STATE: {admin_state.get(user_id, {}).get('mode', 'none')}")
+
         # ─── ОБРАБОТКА СОСТОЯНИЙ ───
         if is_admin and user_id in admin_state:
             state = admin_state[user_id]
@@ -41,6 +44,7 @@ def run_messenger():
 
             # === REDDIT NAVIGATION (первым!) ===
             if mode == "reddit_view":
+                logging.info("REDDIT VIEW MODE")
                 from reddit_handler import load_drafts, save_drafts
                 drafts = load_drafts()
                 pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
@@ -52,10 +56,9 @@ def run_messenger():
                     send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
 
-                if t == "⬅️ предыдущий":
-                    idx = (idx - 1) % len(ids)
-                elif t == "➡️ следующий":
-                    idx = (idx + 1) % len(ids)
+                if t == "⬅️ предыдущий": idx = (idx - 1) % len(ids)
+                elif t == "➡️ следующий": idx = (idx + 1) % len(ids)
+                
                 elif t == "✅ в очередь":
                     draft_id = ids[idx]; d = pending[draft_id]
                     attachments = []
@@ -79,6 +82,7 @@ def run_messenger():
                     send_message(vk, user_id, f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!", get_admin_main_keyboard())
                     admin_state.pop(user_id, None)
                     continue
+
                 elif "ии перевод" in t:
                     draft_id = ids[idx]; d = pending[draft_id]
                     original = d.get("original_text", d.get("text", ""))
@@ -87,10 +91,23 @@ def run_messenger():
                         translated = translate_text(original)
                         if translated:
                             drafts[draft_id]["text"] = translated; drafts[draft_id]["translated"] = True; save_drafts(drafts)
-                            send_message(vk, user_id, f"✅ Переведено!\n\n{translated[:500]}", get_admin_main_keyboard())
+                            send_message(vk, user_id, f"✅ Переведено!", get_admin_main_keyboard())
                         else: send_message(vk, user_id, "❌ Ошибка перевода.", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None)
+                    # Обновить и показать
+                    pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                    ids = list(pending.keys())
+                    if ids:
+                        idx = min(idx, len(ids) - 1); d = pending[ids[idx]]
+                        msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
+                        if d.get('title'): msg += f"📌 {d['title']}\n\n"
+                        if d.get('text'): msg += f"{d['text'][:500]}\n\n"
+                        if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
+                        if d.get('url'): msg += f"🔗 {d['url']}"
+                        admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                    else: admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
+
                 elif "ии рерайт" in t:
                     draft_id = ids[idx]; d = pending[draft_id]
                     original = d.get("text", "")
@@ -99,33 +116,53 @@ def run_messenger():
                         rewritten = generate_text(f"Перефразируй этот текст своими словами, сохрани смысл:\n\n{original[:2000]}")
                         if rewritten:
                             drafts[draft_id]["text"] = rewritten; save_drafts(drafts)
-                            send_message(vk, user_id, f"✅ Готово!\n\n{rewritten[:500]}", get_admin_main_keyboard())
+                            send_message(vk, user_id, f"✅ Готово!", get_admin_main_keyboard())
                         else: send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None)
+                    # Обновить и показать
+                    pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                    ids = list(pending.keys())
+                    if ids:
+                        idx = min(idx, len(ids) - 1); d = pending[ids[idx]]
+                        msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
+                        if d.get('title'): msg += f"📌 {d['title']}\n\n"
+                        if d.get('text'): msg += f"{d['text'][:500]}\n\n"
+                        if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
+                        if d.get('url'): msg += f"🔗 {d['url']}"
+                        admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                    else: admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
+
                 elif "редактировать" in t:
                     admin_state[user_id] = {"mode": "reddit_edit", "draft_id": ids[idx]}
                     send_message(vk, user_id, "✏️ Напишите новый текст:", get_cancel_keyboard())
                     continue
+
                 elif "удалить" in t:
                     del drafts[ids[idx]]; save_drafts(drafts)
                     send_message(vk, user_id, "🗑 Удалён.", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None)
-                    continue
-                elif t == "🔙 назад":
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "📱 Reddit", get_reddit_keyboard())
+                    # Обновить и показать следующий
+                    pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                    ids = list(pending.keys())
+                    if ids:
+                        idx = min(idx, len(ids) - 1); d = pending[ids[idx]]
+                        msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
+                        if d.get('title'): msg += f"📌 {d['title']}\n\n"
+                        if d.get('text'): msg += f"{d['text'][:500]}\n\n"
+                        if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
+                        if d.get('url'): msg += f"🔗 {d['url']}"
+                        admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                    else: admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
 
-                # Refresh and show current
+                elif t == "🔙 назад": admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Reddit", get_reddit_keyboard()); continue
+
+                # Refresh and show
                 pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
                 ids = list(pending.keys())
-                if not ids:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
-                    continue
-                idx = min(idx, len(ids) - 1)
-                d = pending[ids[idx]]
+                if not ids: admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard()); continue
+                idx = min(idx, len(ids) - 1); d = pending[ids[idx]]
                 msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
                 if d.get('title'): msg += f"📌 {d['title']}\n\n"
                 if d.get('text'): msg += f"{d['text'][:500]}\n\n"
