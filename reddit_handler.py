@@ -31,24 +31,49 @@ def reddit_post():
         author = data.get("author", "")
         subreddit = data.get("subreddit", "")
 
+        # Авто-перевод при получении
+        translated_title = title
+        translated_text = text
+
+        if title and not is_russian(title):
+            try:
+                from ai_poster import translate_text
+                tr = translate_text(title)
+                if tr:
+                    translated_title = tr
+                    logging.info(f"📱 Заголовок переведён: {title[:50]} → {tr[:50]}")
+            except Exception as e:
+                logging.error(f"📱 Ошибка перевода заголовка: {e}")
+
+        if text and not is_russian(text):
+            try:
+                from ai_poster import translate_text
+                tr = translate_text(text)
+                if tr:
+                    translated_text = tr
+                    logging.info(f"📱 Текст переведён: {text[:50]} → {tr[:50]}")
+            except Exception as e:
+                logging.error(f"📱 Ошибка перевода текста: {e}")
+
         drafts = load_drafts()
         draft_id = str(int(datetime.now().timestamp()))
         drafts[draft_id] = {
-            "title": title,
-            "text": text,
+            "title": translated_title,
+            "text": translated_text,
             "original_text": text,
+            "original_title": title,
             "images": images,
             "url": url,
             "author": author,
             "subreddit": subreddit,
             "source": "reddit",
             "status": "pending",
-            "translated": False
+            "translated": True
         }
         save_drafts(drafts)
 
-        # Уведомление админу — просто информируем
-        msg = f"📱 Новый пост с Reddit!\n📌 {title[:100]}\n🖼 Фото: {len(images)} шт.\n\nЗаходи в раздел «📱 Reddit» для обработки."
+        # Уведомление админу
+        msg = f"📱 Новый пост с Reddit!\n📌 {translated_title[:100]}\n🖼 Фото: {len(images)} шт.\n\nЗаходи в раздел «📱 Reddit» для обработки."
 
         vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
         vk_group.messages.send(
