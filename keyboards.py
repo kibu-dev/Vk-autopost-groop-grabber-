@@ -62,10 +62,11 @@ def get_reddit_post_keyboard(has_text):
     k.add_line()
     if has_text:
         k.add_button("🤖 ИИ перевод", VkKeyboardColor.PRIMARY)
+        k.add_line()
         k.add_button("🔄 ИИ рерайт", VkKeyboardColor.PRIMARY)
         k.add_line()
         k.add_button("✏️ Редактировать", VkKeyboardColor.PRIMARY)
-    k.add_line()
+        k.add_line()
     k.add_button("❌ Удалить", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("🔙 Назад", VkKeyboardColor.SECONDARY)
