@@ -3,4 +3,4 @@ python-dotenv==1.0.0
 requests==2.31.0
 flask==3.0.0
 deep-translator==1.11.4
-g4f==0.4.9.9
+g4f==7.7.1
