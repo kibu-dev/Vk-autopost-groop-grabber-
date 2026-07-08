@@ -1,6 +1,6 @@
-# ai_poster.py
 import time
 import logging
+from g4f.client import Client
 from deep_translator import GoogleTranslator
 
 PROMPT_FILE = "prompt.txt"
@@ -20,7 +20,6 @@ def generate_text(prompt):
     try:
         ai_log(f"G4F запрос: {prompt[:100]}")
         time.sleep(2)
-        from g4f.client import Client
         client = Client()
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -28,7 +27,7 @@ def generate_text(prompt):
             max_tokens=1500
         )
         result = response.choices[0].message.content
-        ai_log(f"G4F ответ: {result[:200]}...")
+        ai_log(f"G4F ответ: {result[:200] if result else 'нет'}...")
         return result
     except Exception as e:
         ai_log(f"G4F ошибка: {e}")
