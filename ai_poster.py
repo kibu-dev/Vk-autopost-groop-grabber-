@@ -57,3 +57,24 @@ def translate_text(text, target='ru'):
     except Exception as e:
         ai_log(f"Перевод ошибка: {e}")
         return None
+
+def is_russian(text):
+    """Проверяет, русский ли текст (хотя бы 50% букв — кириллица)"""
+    if not text or len(text.strip()) < 5:
+        return True
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return True
+    cyrillic = sum(1 for c in letters if 'а' <= c.lower() <= 'я')
+    return cyrillic / len(letters) >= 0.5
+
+def rewrite_text(text):
+    """Перефразирует текст, сохраняя смысл"""
+    if not text or len(text.strip()) < 10:
+        return None
+    prompt = f"""Перефразируй этот текст своими словами, сохрани смысл и стиль.
+
+Пиши живым, разговорным языком. Не используй Markdown. Сохрани все эмодзи, если они были. Объём примерно как оригинал.
+
+{text[:2000]}"""
+    return generate_text(prompt)
