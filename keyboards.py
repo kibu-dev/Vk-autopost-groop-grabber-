@@ -45,25 +45,26 @@ def get_admin_main_keyboard():
     k.add_button("🔙 Польз. меню", VkKeyboardColor.SECONDARY)
     return k
 
-def get_reddit_post_keyboard(has_text):
+def get_reddit_post_keyboard(has_text, has_title=False):
     k = VkKeyboard(one_time=False)
-    k.add_button("⬅️ Предыдущий", VkKeyboardColor.PRIMARY)
-    k.add_button("➡️ Следующий", VkKeyboardColor.PRIMARY)
+    k.add_button("⬅️ Назад", VkKeyboardColor.PRIMARY)
+    k.add_button("➡️ Вперёд", VkKeyboardColor.PRIMARY)
     k.add_line()
-    k.add_button("✅ В очередь", VkKeyboardColor.POSITIVE)
+    k.add_button("✅ Опубликовать", VkKeyboardColor.POSITIVE)
     k.add_button("📷 Только фото", VkKeyboardColor.POSITIVE)
     k.add_line()
+    if has_text or has_title:
+        k.add_button("🌐 Перевести", VkKeyboardColor.PRIMARY)
+        k.add_line()
     if has_text:
-        k.add_button("🤖 ИИ перевод", VkKeyboardColor.PRIMARY)
+        k.add_button("✍️ Перефразировать", VkKeyboardColor.PRIMARY)
         k.add_line()
-        k.add_button("🔄 ИИ рерайт", VkKeyboardColor.PRIMARY)
-        k.add_line()
-        k.add_button("✏️ Редактировать", VkKeyboardColor.PRIMARY)
+    if has_text or has_title:
+        k.add_button("✏️ Править", VkKeyboardColor.PRIMARY)
         k.add_line()
     k.add_button("❌ Удалить", VkKeyboardColor.NEGATIVE)
-    k.add_button("🗑 Очистить всё", VkKeyboardColor.NEGATIVE)
     k.add_line()
-    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
+    k.add_button("🔙 В админку", VkKeyboardColor.SECONDARY)
     return k
 
 def get_donor_groups_keyboard():
