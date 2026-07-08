@@ -1,6 +1,6 @@
+# ai_poster.py
 import time
 import logging
-from duckduckgo_search import DDGS
 from deep_translator import GoogleTranslator
 
 PROMPT_FILE = "prompt.txt"
@@ -16,20 +16,25 @@ def load_prompt():
         return "Напиши пост на тему: {text}"
 
 def generate_text(prompt):
-    """Генерация текста через DuckDuckGo AI Chat"""
+    """Генерация текста через g4f"""
     try:
-        ai_log(f"DDG запрос: {prompt[:100]}")
-        time.sleep(3)
-        with DDGS() as ddgs:
-            result = ddgs.chat(prompt, model='gpt-4o-mini', timeout=30)
-            ai_log(f"DDG ответ: {result[:200] if result else 'нет'}...")
-            return result
+        ai_log(f"G4F запрос: {prompt[:100]}")
+        time.sleep(2)
+        from g4f.client import Client
+        client = Client()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1500
+        )
+        result = response.choices[0].message.content
+        ai_log(f"G4F ответ: {result[:200]}...")
+        return result
     except Exception as e:
-        ai_log(f"DDG ошибка: {e}")
+        ai_log(f"G4F ошибка: {e}")
         return None
 
 def generate_variants(text):
-    """Генерация поста через prompt.txt"""
     prompt = load_prompt().replace("{text}", text)
     return generate_text(prompt)
 
@@ -39,7 +44,6 @@ def parse_variants(result):
     return []
 
 def translate_text(text, target='ru'):
-    """Перевод текста через Google Translate"""
     try:
         if not text or len(text.strip()) < 5:
             return None
