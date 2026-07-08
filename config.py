@@ -14,4 +14,5 @@ GRAB_INTERVAL = int(os.getenv("GRAB_INTERVAL", "900"))
 GRAB_POSTS_PER_GROUP = int(os.getenv("GRAB_POSTS_PER_GROUP", "3"))
 MAX_GRAB_PER_GROUP_DAY = int(os.getenv("MAX_GRAB_PER_GROUP_DAY", "3"))
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+YANDEX_API_KEY = os.getenv("YANDEX_API_KEY", "")
+YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID", "")
