@@ -33,16 +33,111 @@ def run_messenger():
         text = event.text.strip() if event.text else ""
         is_admin = (user_id == ADMIN_ID)
 
+        # ─── ОБРАБОТКА СОСТОЯНИЙ ───
         if is_admin and user_id in admin_state:
             state = admin_state[user_id]
             mode = state.get("mode")
             t = text.lower()
 
-            if mode == "ai_post":
-                if t in ["🔙 отмена", "❌ отмена"]:
+            # === REDDIT NAVIGATION (первым!) ===
+            if mode == "reddit_view":
+                from reddit_handler import load_drafts, save_drafts
+                drafts = load_drafts()
+                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                ids = state.get("ids", [])
+                idx = state.get("index", 0)
+
+                if not pending:
                     admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
+                    send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
+
+                if t == "⬅️ предыдущий":
+                    idx = (idx - 1) % len(ids)
+                elif t == "➡️ следующий":
+                    idx = (idx + 1) % len(ids)
+                elif t == "✅ в очередь":
+                    draft_id = ids[idx]; d = pending[draft_id]
+                    attachments = []
+                    for img_url in d.get('images', [])[:10]:
+                        try:
+                            resp = req.get(img_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+                            if resp.status_code != 200 or len(resp.content) < 1000: continue
+                            up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+                            up = req.post(up_server['upload_url'], files={'photo': ('r.jpg', resp.content, 'image/jpeg')}).json()
+                            if 'photo' in up and up['photo']:
+                                saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
+                                if saved: attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
+                        except: pass
+                    post_text = d.get('text', '')
+                    if d.get('title') and not post_text: post_text = d['title']
+                    elif d.get('title'): post_text = f"{d['title']}\n\n{post_text}"
+                    pub_time = get_next_free_hour()
+                    vk_user.wall.post(owner_id=-GROUP_ID, message=post_text[:4000], attachments=",".join(attachments) if attachments else None, from_group=1, publish_date=pub_time)
+                    add_scheduled_post(pub_time, post_text[:200], 0)
+                    del drafts[draft_id]; save_drafts(drafts)
+                    send_message(vk, user_id, f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                    continue
+                elif "ии перевод" in t:
+                    draft_id = ids[idx]; d = pending[draft_id]
+                    original = d.get("original_text", d.get("text", ""))
+                    if original:
+                        send_message(vk, user_id, "⏳ Перевожу...")
+                        translated = translate_text(original)
+                        if translated:
+                            drafts[draft_id]["text"] = translated; drafts[draft_id]["translated"] = True; save_drafts(drafts)
+                            send_message(vk, user_id, f"✅ Переведено!\n\n{translated[:500]}", get_admin_main_keyboard())
+                        else: send_message(vk, user_id, "❌ Ошибка перевода.", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                    continue
+                elif "ии рерайт" in t:
+                    draft_id = ids[idx]; d = pending[draft_id]
+                    original = d.get("text", "")
+                    if original:
+                        send_message(vk, user_id, "⏳ Перефразирую...")
+                        rewritten = generate_text(f"Перефразируй этот текст своими словами, сохрани смысл:\n\n{original[:2000]}")
+                        if rewritten:
+                            drafts[draft_id]["text"] = rewritten; save_drafts(drafts)
+                            send_message(vk, user_id, f"✅ Готово!\n\n{rewritten[:500]}", get_admin_main_keyboard())
+                        else: send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                    continue
+                elif "редактировать" in t:
+                    admin_state[user_id] = {"mode": "reddit_edit", "draft_id": ids[idx]}
+                    send_message(vk, user_id, "✏️ Напишите новый текст:", get_cancel_keyboard())
+                    continue
+                elif "удалить" in t:
+                    del drafts[ids[idx]]; save_drafts(drafts)
+                    send_message(vk, user_id, "🗑 Удалён.", get_admin_main_keyboard())
+                    admin_state.pop(user_id, None)
+                    continue
+                elif t == "🔙 назад":
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "📱 Reddit", get_reddit_keyboard())
+                    continue
+
+                # Refresh and show current
+                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                ids = list(pending.keys())
+                if not ids:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
+                    continue
+                idx = min(idx, len(ids) - 1)
+                d = pending[ids[idx]]
+                msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
+                if d.get('title'): msg += f"📌 {d['title']}\n\n"
+                if d.get('text'): msg += f"{d['text'][:500]}\n\n"
+                if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
+                if d.get('url'): msg += f"🔗 {d['url']}"
+                admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+                send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
+                continue
+
+            # AI-постер
+            if mode == "ai_post":
+                if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
                 attachments = []
                 try:
                     msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
@@ -60,12 +155,8 @@ def run_messenger():
                     if variants and len(variants[0]) > 20:
                         admin_state[user_id]["variants"] = variants
                         send_message(vk, user_id, f"🤖 Готовый пост:\n\n{variants[0]}", get_variants_keyboard())
-                    else:
-                        send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
-                        admin_state.pop(user_id, None)
-                else:
-                    send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None)
+                    else: send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard()); admin_state.pop(user_id, None)
+                else: send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard()); admin_state.pop(user_id, None)
                 continue
 
             if mode == "ai_choose":
@@ -73,17 +164,14 @@ def run_messenger():
                     chosen = state["variants"][0] if state.get("variants") else state["text"]
                     att = ",".join(state.get("attachments", [])) or None
                     r = vk_user.wall.post(owner_id=-GROUP_ID, message=chosen, attachments=att, from_group=1)
-                    add_published_post(r["post_id"], ADMIN_ID, chosen)
-                    admin_state.pop(user_id, None)
+                    add_published_post(r["post_id"], ADMIN_ID, chosen); admin_state.pop(user_id, None)
                     send_message(vk, user_id, "✅ Опубликовано!" + (" 📎" if att else ""), get_admin_main_keyboard())
                 elif t == "✏️ свой текст": admin_state[user_id] = {"mode": "ai_custom"}; send_message(vk, user_id, "✏️ Напишите свой текст:", get_cancel_keyboard())
                 elif t == "🔄 ещё вариант":
                     result = generate_variants(state["text"])
                     if result:
                         variants = parse_variants(result)
-                        if variants and len(variants[0]) > 20:
-                            state["variants"] = variants
-                            send_message(vk, user_id, f"🤖 Новый вариант:\n\n{variants[0]}", get_variants_keyboard())
+                        if variants and len(variants[0]) > 20: state["variants"] = variants; send_message(vk, user_id, f"🤖 Новый вариант:\n\n{variants[0]}", get_variants_keyboard())
                         else: send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
                     else: send_message(vk, user_id, "❌ Ошибка ИИ.", get_admin_main_keyboard())
                 elif t == "❌ отмена": admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
@@ -194,7 +282,6 @@ def run_messenger():
             continue
 
         t = text.lower()
-        t_orig = text.strip()
 
         if t in ["начать", "меню", "start"]:
             send_message(vk, user_id, "👋 Привет!", get_admin_main_keyboard() if is_admin else get_main_keyboard())
@@ -220,6 +307,7 @@ def run_messenger():
         elif is_admin:
             if t in ["🔙 назад в админку", "🔙 назад"]: admin_state.pop(user_id, None); send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
             elif t == "🔙 пользовательское меню": send_message(vk, user_id, "Меню:", get_main_keyboard())
+
             elif t == "📢 модерация":
                 posts = get_moderation_posts(); pending = get_pending_grabs()
                 if posts:
@@ -229,6 +317,7 @@ def run_messenger():
                     send_message(vk, user_id, f"🎣 Граббер ({len(pending)}):", get_admin_main_keyboard())
                     for i, p in enumerate(pending[:10]): send_message(vk, user_id, f"🚨 #{i+1} ({p['reason']})\nИз: {p['from_group']}\n\n{p['post']['text'][:300]}", get_pending_grab_keyboard(i))
                 if not posts and not pending: send_message(vk, user_id, "✅ Пусто.", get_admin_main_keyboard())
+
             elif t == "📅 очередь постов":
                 sched = get_scheduled_posts()
                 if sched:
@@ -236,6 +325,7 @@ def run_messenger():
                     for p in sched[:10]: msg += f"• {datetime.fromtimestamp(p['time']).strftime('%d.%m %H:%M')} — {p['text'][:50]}...\n"
                     send_message(vk, user_id, msg, get_scheduled_keyboard())
                 else: send_message(vk, user_id, "📭 Пусто.", get_admin_main_keyboard())
+
             elif t == "👥 группы-доноры": send_message(vk, user_id, "Группы:", get_donor_groups_keyboard())
             elif t == "🚫 запрет-слова": send_message(vk, user_id, "Слова:", get_forbidden_words_keyboard())
 
@@ -262,90 +352,8 @@ def run_messenger():
                 drafts = load_drafts(); drafts = {k: v for k, v in drafts.items() if v.get("status") != "pending"}
                 save_drafts(drafts); send_message(vk, user_id, "🗑 Все посты Reddit удалены.", get_admin_main_keyboard())
 
-            # === REDDIT NAVIGATION ===
-            elif is_admin and user_id in admin_state and admin_state[user_id].get("mode") == "reddit_view":
-                state = admin_state[user_id]
-                from reddit_handler import load_drafts, save_drafts
-                drafts = load_drafts(); pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
-                ids = state.get("ids", []); idx = state.get("index", 0)
-
-                if not pending: admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard()); continue
-
-                if t == "⬅️ предыдущий": idx = (idx - 1) % len(ids)
-                elif t == "➡️ следующий": idx = (idx + 1) % len(ids)
-                elif t == "✅ в очередь":
-                    draft_id = ids[idx]; d = pending[draft_id]
-                    attachments = []
-                    for img_url in d.get('images', [])[:10]:
-                        try:
-                            resp = req.get(img_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
-                            if resp.status_code != 200 or len(resp.content) < 1000: continue
-                            up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
-                            up = req.post(up_server['upload_url'], files={'photo': ('r.jpg', resp.content, 'image/jpeg')}).json()
-                            if 'photo' in up and up['photo']:
-                                saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
-                                if saved: attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
-                        except: pass
-                    post_text = d.get('text', '')
-                    if d.get('title') and not post_text: post_text = d['title']
-                    elif d.get('title'): post_text = f"{d['title']}\n\n{post_text}"
-                    pub_time = get_next_free_hour()
-                    vk_user.wall.post(owner_id=-GROUP_ID, message=post_text[:4000], attachments=",".join(attachments) if attachments else None, from_group=1, publish_date=pub_time)
-                    add_scheduled_post(pub_time, post_text[:200], 0)
-                    del drafts[draft_id]; save_drafts(drafts)
-                    send_message(vk, user_id, f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None); continue
-
-                elif "ии перевод" in t:
-                    draft_id = ids[idx]; d = pending[draft_id]
-                    original = d.get("original_text", d.get("text", ""))
-                    if original:
-                        send_message(vk, user_id, "⏳ Перевожу...")
-                        translated = translate_text(original)
-                        if translated:
-                            drafts[draft_id]["text"] = translated; drafts[draft_id]["translated"] = True; save_drafts(drafts)
-                            send_message(vk, user_id, f"✅ Переведено!\n\n{translated[:500]}", get_admin_main_keyboard())
-                        else: send_message(vk, user_id, "❌ Ошибка перевода.", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None); continue
-
-                elif "ии рерайт" in t:
-                    draft_id = ids[idx]; d = pending[draft_id]
-                    original = d.get("text", "")
-                    if original:
-                        send_message(vk, user_id, "⏳ Перефразирую...")
-                        rewritten = generate_text(f"Перефразируй этот текст своими словами, сохрани смысл:\n\n{original[:2000]}")
-                        if rewritten:
-                            drafts[draft_id]["text"] = rewritten; save_drafts(drafts)
-                            send_message(vk, user_id, f"✅ Готово!\n\n{rewritten[:500]}", get_admin_main_keyboard())
-                        else: send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None); continue
-
-                elif "редактировать" in t:
-                    admin_state[user_id] = {"mode": "reddit_edit", "draft_id": ids[idx]}
-                    send_message(vk, user_id, "✏️ Напишите новый текст:", get_cancel_keyboard()); continue
-
-                elif "удалить" in t:
-                    del drafts[ids[idx]]; save_drafts(drafts)
-                    send_message(vk, user_id, "🗑 Удалён.", get_admin_main_keyboard())
-                    admin_state.pop(user_id, None); continue
-
-                elif t == "🔙 назад": admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Reddit", get_reddit_keyboard()); continue
-
-                # Refresh
-                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}; ids = list(pending.keys())
-                if not ids: admin_state.pop(user_id, None); send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard()); continue
-                idx = min(idx, len(ids) - 1); d = pending[ids[idx]]
-                msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
-                if d.get('title'): msg += f"📌 {d['title']}\n\n"
-                if d.get('text'): msg += f"{d['text'][:500]}\n\n"
-                if d.get('images'): msg += f"🖼 Фото: {len(d['images'])} шт.\n"
-                if d.get('url'): msg += f"🔗 {d['url']}"
-                admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip())))
-
             elif t == "📊 статистика":
-                s = get_stats()
-                from reddit_handler import load_drafts
+                s = get_stats(); from reddit_handler import load_drafts
                 drafts = load_drafts(); reddit_pending = len([v for v in drafts.values() if v.get("status") == "pending"])
                 msg = f"📊 Статистика:\n• Опубликовано: {s['total_published']}\n• Запланировано: {s['scheduled_count']}\n• Взято граббером: {s['total_grabbed']}\n• На модерации: {s['pending_moderation']}\n• Reddit: {reddit_pending}\n• Доноров: {s['donor_count']}"
                 send_message(vk, user_id, msg, get_admin_main_keyboard())
@@ -383,7 +391,6 @@ def run_messenger():
                             vk_user.wall.delete(owner_id=-GROUP_ID, post_id=pid); add_published_post(r["post_id"], puid, pt); remove_from_moderation(pid)
                             send_message(vk, user_id, "✅ Опубликован!", get_admin_main_keyboard()); break
                 except Exception as e: send_message(vk, user_id, f"❌ {e}", get_admin_main_keyboard())
-
             elif t.startswith("✅ граббер "):
                 try:
                     idx = int(t.split()[-1]); pending = get_pending_grabs()
@@ -393,13 +400,11 @@ def run_messenger():
                         add_scheduled_post(pub_time, p["post"]["text"][:200], p["from_group"]); remove_pending_grab(idx)
                         send_message(vk, user_id, f"✅ Запланирован на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!", get_admin_main_keyboard())
                 except Exception as e: send_message(vk, user_id, f"❌ {e}", get_admin_main_keyboard())
-
             elif t.startswith("❌ удалить "):
                 pid = int(t.split()[-1])
                 try: vk_user.wall.delete(owner_id=-GROUP_ID, post_id=pid)
                 except: pass
                 remove_from_moderation(pid); send_message(vk, user_id, "❌ Удалён.", get_admin_main_keyboard())
-
             elif t.startswith("❌ граббер "):
                 try: idx = int(t.split()[-1]); remove_pending_grab(idx); send_message(vk, user_id, "❌ Удалён.", get_admin_main_keyboard())
                 except: send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
