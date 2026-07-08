@@ -5,6 +5,7 @@ from flask import Flask, request
 import vk_api
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from config import *
+from ai_poster import translate_text, is_russian
 
 REDDIT_DRAFTS_FILE = "reddit_drafts.json"
 app = Flask(__name__)
@@ -37,7 +38,6 @@ def reddit_post():
 
         if title and not is_russian(title):
             try:
-                from ai_poster import translate_text
                 tr = translate_text(title)
                 if tr:
                     translated_title = tr
@@ -47,7 +47,6 @@ def reddit_post():
 
         if text and not is_russian(text):
             try:
-                from ai_poster import translate_text
                 tr = translate_text(text)
                 if tr:
                     translated_text = tr
