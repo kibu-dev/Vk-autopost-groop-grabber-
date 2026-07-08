@@ -5,6 +5,10 @@ from config import GROQ_API_KEY
 
 PROMPT_FILE = "prompt.txt"
 
+def ai_log(message):
+    """Заглушка для совместимости со старым кодом"""
+    logging.info(f"AI: {message}")
+
 def load_prompt():
     try:
         with open(PROMPT_FILE, "r", encoding="utf-8") as f:
@@ -13,12 +17,11 @@ def load_prompt():
         return "Напиши пост на тему: {text}"
 
 def generate_text(prompt):
-    """Отправляет запрос к GROQ"""
     if not GROQ_API_KEY:
         logging.error("Нет GROQ_API_KEY")
         return None
     
-    logging.info(f"GROQ запрос: {prompt[:100]}")
+    logging.info(f"GROQ: {prompt[:100]}")
     
     try:
         client = Groq(api_key=GROQ_API_KEY)
@@ -36,7 +39,6 @@ def generate_text(prompt):
         return None
 
 def generate_variants(text):
-    """Генерирует текст через prompt.txt"""
     prompt = load_prompt().replace("{text}", text)
     return generate_text(prompt)
 
