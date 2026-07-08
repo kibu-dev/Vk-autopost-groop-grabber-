@@ -1,3 +1,4 @@
+import time
 import logging
 from duckduckgo_search import DDGS
 from deep_translator import GoogleTranslator
@@ -18,8 +19,9 @@ def generate_text(prompt):
     """Генерация текста через DuckDuckGo AI Chat"""
     try:
         ai_log(f"DDG запрос: {prompt[:100]}")
+        time.sleep(3)
         with DDGS() as ddgs:
-            result = ddgs.chat(prompt, model='gpt-4o-mini')
+            result = ddgs.chat(prompt, model='gpt-4o-mini', timeout=30)
             ai_log(f"DDG ответ: {result[:200] if result else 'нет'}...")
             return result
     except Exception as e:
