@@ -4,6 +4,7 @@ from g4f.client import Client
 from deep_translator import GoogleTranslator
 
 PROMPT_FILE = "prompt.txt"
+AI_POST_PROMPT_FILE = "ai_prompt.txt"
 
 def ai_log(message):
     logging.info(f"AI: {message}")
@@ -34,7 +35,12 @@ def generate_text(prompt):
         return None
 
 def generate_variants(text):
-    prompt = load_prompt().replace("{text}", text)
+    try:
+        with open(AI_POST_PROMPT_FILE, "r", encoding="utf-8") as f:
+            prompt_template = f.read()
+    except:
+        prompt_template = "Напиши пост на тему: {text}"
+    prompt = prompt_template.replace("{text}", text)
     return generate_text(prompt)
 
 def parse_variants(result):
