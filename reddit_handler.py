@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from flask import Flask, request
 import vk_api
+import requests as req
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from config import *
 from ai_poster import translate_text, is_russian
@@ -21,6 +22,59 @@ def save_drafts(data):
     with open(REDDIT_DRAFTS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
+def upload_photos_to_vk(image_urls):
+    """Загружает фото в VK и возвращает список attachment-строк"""
+    if not image_urls:
+        return [], []
+    
+    attachments = []
+    errors = []
+    
+    try:
+        vk_user = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
+    except Exception as e:
+        return [], [f"VK auth error: {e}"]
+
+    for img_url in image_urls[:10]:
+        try:
+            headers_list = [
+                {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Referer': 'https://www.reddit.com/'
+                },
+                {
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36',
+                    'Accept': 'image/*',
+                    'Referer': 'https://www.reddit.com/'
+                }
+            ]
+            resp = None
+            for headers in headers_list:
+                try:
+                    resp = req.get(img_url, timeout=20, headers=headers)
+                    if resp.status_code == 200 and len(resp.content) >= 1000:
+                        break
+                except:
+                    continue
+            
+            if not resp or resp.status_code != 200 or len(resp.content) < 1000:
+                errors.append(f"HTTP {resp.status_code if resp else 'timeout'}: {img_url[:60]}")
+                continue
+            
+            up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
+            up = req.post(up_server['upload_url'], files={'photo': ('r.jpg', resp.content, 'image/jpeg')}).json()
+            
+            if 'photo' in up and up['photo']:
+                saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
+                if saved:
+                    attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
+        except Exception as e:
+            errors.append(f"{str(e)[:80]}: {img_url[:60]}")
+    
+    return attachments, errors
+
 @app.route("/reddit", methods=["POST"])
 def reddit_post():
     try:
@@ -32,7 +86,7 @@ def reddit_post():
         author = data.get("author", "")
         subreddit = data.get("subreddit", "")
 
-        # Авто-перевод при получении
+        # Авто-перевод
         translated_title = title
         translated_text = text
 
@@ -54,6 +108,12 @@ def reddit_post():
             except Exception as e:
                 logging.error(f"📱 Ошибка перевода текста: {e}")
 
+        # Загружаем фото в VK сразу при получении
+        logging.info(f"📱 Загружаю {len(images)} фото в VK...")
+        vk_attachments, upload_errors = upload_photos_to_vk(images)
+        if upload_errors:
+            logging.warning(f"📱 Ошибки загрузки фото: {upload_errors}")
+
         drafts = load_drafts()
         draft_id = str(int(datetime.now().timestamp()))
         drafts[draft_id] = {
@@ -62,6 +122,7 @@ def reddit_post():
             "original_text": text,
             "original_title": title,
             "images": images,
+            "vk_attachments": vk_attachments,
             "url": url,
             "author": author,
             "subreddit": subreddit,
@@ -72,7 +133,10 @@ def reddit_post():
         save_drafts(drafts)
 
         # Уведомление админу
-        msg = f"📱 Новый пост с Reddit!\n📌 {translated_title[:100]}\n🖼 Фото: {len(images)} шт.\n\nЗаходи в раздел «📱 Reddit» для обработки."
+        msg = f"📱 Новый пост с Reddit!\n📌 {translated_title[:100]}\n🖼 Фото: {len(images)} шт.\n📸 Загружено в VK: {len(vk_attachments)}/{len(images)}"
+        if upload_errors:
+            msg += f"\n⚠️ Ошибок: {len(upload_errors)}"
+        msg += f"\n\nЗаходи в раздел «📱 Reddit» для обработки."
 
         vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
         vk_group.messages.send(
@@ -82,7 +146,7 @@ def reddit_post():
             group_id=GROUP_ID
         )
 
-        logging.info(f"📱 Reddit пост {draft_id} сохранён")
+        logging.info(f"📱 Reddit пост {draft_id} сохранён (фото: {len(vk_attachments)}/{len(images)})")
         return "ok"
     except Exception as e:
         logging.error(f"Reddit error: {e}")
