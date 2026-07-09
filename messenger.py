@@ -59,43 +59,17 @@ def run_messenger():
 
                 elif t == "✅ опубликовать":
                     draft_id = ids[idx]; d = pending[draft_id]
-                    attachments = []
-                    errors = []
-
-                    for img_url in d.get('images', [])[:10]:
-                        try:
-                            headers_list = [
-                                {
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                                    'Accept-Language': 'en-US,en;q=0.9',
-                                    'Referer': 'https://www.reddit.com/'
-                                },
-                                {
-                                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36',
-                                    'Accept': 'image/*',
-                                    'Referer': 'https://www.reddit.com/'
-                                }
-                            ]
-                            resp = None
-                            for headers in headers_list:
-                                try:
-                                    resp = req.get(img_url, timeout=20, headers=headers)
-                                    if resp.status_code == 200 and len(resp.content) >= 1000:
-                                        break
-                                except:
-                                    continue
-                            if not resp or resp.status_code != 200 or len(resp.content) < 1000:
-                                errors.append(f"HTTP {resp.status_code if resp else 'timeout'}")
-                                continue
-                            up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
-                            up = req.post(up_server['upload_url'], files={'photo': ('r.jpg', resp.content, 'image/jpeg')}).json()
-                            if 'photo' in up and up['photo']:
-                                saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
-                                if saved:
-                                    attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
-                        except Exception as e:
-                            errors.append(str(e)[:100])
+                    
+                    # Используем готовые vk_attachments, если есть
+                    attachments = d.get('vk_attachments', [])
+                    if not attachments and d.get('images'):
+                        send_message(vk, user_id, "⏳ Фото ещё не загружены, загружаю...", get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
+                        # Загружаем на лету
+                        from reddit_handler import upload_photos_to_vk
+                        attachments, _ = upload_photos_to_vk(d.get('images', [])[:10])
+                        if attachments:
+                            drafts[draft_id]['vk_attachments'] = attachments
+                            save_drafts(drafts)
 
                     post_text = d.get('text', '')
                     if d.get('title') and not post_text: post_text = d['title']
@@ -129,7 +103,6 @@ def run_messenger():
                         total_images = len(d.get('images', []))
                         msg = f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!"
                         if attachments: msg += f" 📸 {len(attachments)}/{total_images} фото"
-                        if errors: msg += f"\n⚠️ Ошибок загрузки: {len(errors)}"
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, msg, get_admin_main_keyboard())
                     else:
@@ -139,49 +112,21 @@ def run_messenger():
 
                 elif t == "📷 только фото":
                     draft_id = ids[idx]; d = pending[draft_id]
-                    if not d.get('images'):
-                        send_message(vk, user_id, "❌ Нет фото в этом посте.", get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
-                        continue
-                    send_message(vk, user_id, "⏳ Загружаю фото...")
-                    attachments = []
-                    errors = []
-                    for img_url in d.get('images', [])[:10]:
-                        try:
-                            headers_list = [
-                                {
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                                    'Accept-Language': 'en-US,en;q=0.9',
-                                    'Referer': 'https://www.reddit.com/'
-                                },
-                                {
-                                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36',
-                                    'Accept': 'image/*',
-                                    'Referer': 'https://www.reddit.com/'
-                                }
-                            ]
-                            resp = None
-                            for headers in headers_list:
-                                try:
-                                    resp = req.get(img_url, timeout=20, headers=headers)
-                                    if resp.status_code == 200 and len(resp.content) >= 1000:
-                                        break
-                                except:
-                                    continue
-                            if not resp or resp.status_code != 200 or len(resp.content) < 1000:
-                                errors.append(f"HTTP {resp.status_code if resp else 'timeout'}")
-                                continue
-                            up_server = vk_user.photos.getWallUploadServer(group_id=GROUP_ID)
-                            up = req.post(up_server['upload_url'], files={'photo': ('r.jpg', resp.content, 'image/jpeg')}).json()
-                            if 'photo' in up and up['photo']:
-                                saved = vk_user.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
-                                if saved:
-                                    attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
-                        except Exception as e:
-                            errors.append(str(e)[:80])
+                    
+                    # Используем готовые vk_attachments
+                    attachments = d.get('vk_attachments', [])
+                    if not attachments and d.get('images'):
+                        send_message(vk, user_id, "⏳ Фото ещё не загружены, загружаю...", get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
+                        from reddit_handler import upload_photos_to_vk
+                        attachments, _ = upload_photos_to_vk(d.get('images', [])[:10])
+                        if attachments:
+                            drafts[draft_id]['vk_attachments'] = attachments
+                            save_drafts(drafts)
+                    
                     if not attachments:
-                        send_message(vk, user_id, f"❌ Не удалось загрузить фото. Ошибок: {len(errors)}", get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
+                        send_message(vk, user_id, "❌ Нет фото для публикации.", get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
                         continue
+
                     pub_time = get_next_free_hour()
                     posted = False
                     for attempt in range(24):
@@ -204,7 +149,6 @@ def run_messenger():
                         del drafts[draft_id]; save_drafts(drafts)
                         total_images = len(d.get('images', []))
                         msg = f"✅ Фото в очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}! 📸 {len(attachments)}/{total_images} фото"
-                        if errors: msg += f"\n⚠️ Ошибок загрузки: {len(errors)}"
                         admin_state.pop(user_id, None)
                         send_message(vk, user_id, msg, get_admin_main_keyboard())
                     else:
