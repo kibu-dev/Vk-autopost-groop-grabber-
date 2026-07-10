@@ -1,9 +1,12 @@
 import time
 import logging
-from g4f.client import Client
+import requests
 from deep_translator import GoogleTranslator
 
 PROMPT_FILE = "prompt.txt"
+
+# Бесплатный ChatGPT через обход (g4f больше не используется)
+API_URL = "https://api.chatanywhere.tech/v1/chat/completions"
 
 def ai_log(message):
     logging.info(f"AI: {message}")
@@ -15,22 +18,36 @@ def load_prompt():
     except:
         return "Напиши пост на тему: {text}"
 
-def generate_text(prompt):
-    """Генерация текста через g4f"""
+def generate_text(prompt, max_tokens=1500):
+    """Генерация текста через бесплатное API."""
     try:
-        ai_log(f"G4F запрос: {prompt[:100]}")
-        time.sleep(2)
-        client = Client()
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1500
-        )
-        result = response.choices[0].message.content
-        ai_log(f"G4F ответ: {result[:200] if result else 'нет'}...")
-        return result
+        ai_log(f"AI запрос: {prompt[:100]}")
+        time.sleep(1)
+
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0"
+        }
+        payload = {
+            "model": "gpt-3.5-turbo",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0.8,
+        }
+
+        response = requests.post(API_URL, json=payload, headers=headers, timeout=60)
+        data = response.json()
+
+        if "choices" in data:
+            result = data["choices"][0]["message"]["content"]
+            ai_log(f"AI ответ: {result[:200] if result else 'нет'}...")
+            return result
+
+        ai_log(f"AI ошибка API: {data}")
+        return None
+
     except Exception as e:
-        ai_log(f"G4F ошибка: {e}")
+        ai_log(f"AI ошибка: {e}")
         return None
 
 def generate_variants(text):
@@ -38,9 +55,17 @@ def generate_variants(text):
     return generate_text(prompt)
 
 def parse_variants(result):
-    if result and len(result.strip()) > 20:
-        return [result.strip()]
-    return []
+    if not result or len(result.strip()) <= 20:
+        return []
+
+    import re
+    parts = re.split(r'(?:Вариант|Variant)\s*\d+[.:]\s*', result)
+    parts = [p.strip() for p in parts if len(p.strip()) > 20]
+
+    if len(parts) >= 2:
+        return parts
+
+    return [result.strip()]
 
 def translate_text(text, target='ru'):
     try:
@@ -53,7 +78,6 @@ def translate_text(text, target='ru'):
         return None
 
 def is_russian(text):
-    """Проверяет, русский ли текст (хотя бы 50% букв — кириллица)"""
     if not text or len(text.strip()) < 5:
         return True
     letters = [c for c in text if c.isalpha()]
@@ -63,7 +87,6 @@ def is_russian(text):
     return cyrillic / len(letters) >= 0.5
 
 def rewrite_text(text):
-    """Перефразирует текст, сохраняя смысл"""
     if not text or len(text.strip()) < 10:
         return None
     prompt = f"""Перефразируй этот текст своими словами, сохрани смысл и стиль.
@@ -71,4 +94,4 @@ def rewrite_text(text):
 Пиши живым, разговорным языком. Не используй Markdown. Сохрани все эмодзи, если они были. Объём примерно как оригинал.
 
 {text[:2000]}"""
-    return generate_text(prompt)
+    return generate_text(prompt, max_tokens=2000)
