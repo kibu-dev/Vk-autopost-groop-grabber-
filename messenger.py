@@ -463,7 +463,6 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_main_keyboard())
                     continue
 
-                # Собираем фото из сообщения
                 attachments = ""
                 try:
                     msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
@@ -502,7 +501,7 @@ def run_messenger():
                     )
 
                 admin_state.pop(user_id, None)
-                send_message(vk, user_id, "✅ Пост принят! Он появится на стене через некоторое время.", get_main_keyboard())
+                send_message(vk, user_id, "✅ Пост принят! Он появится на стене в ближайшее время.", get_main_keyboard())
                 publish_from_queue(vk)
                 continue
 
@@ -533,7 +532,7 @@ def run_messenger():
                 admin_state.pop(user_id, None)
                 continue
 
-        # === ОЖИДАНИЕ ПОДДЕРЖКИ (для обычных пользователей) ===
+        # === ОЖИДАНИЕ ПОДДЕРЖКИ ===
         if user_id in waiting_support:
             waiting_support.discard(user_id)
             if text.lower() not in ["🔙 отмена", "/cancel"]:
@@ -556,7 +555,6 @@ def run_messenger():
         # === ОБРАБОТКА КНОПОК ===
         t = text.lower()
 
-        # Общие команды
         if t in ["начать", "меню", "start"]:
             send_message(vk, user_id, "👋 Привет!", get_admin_main_keyboard() if is_admin else get_main_keyboard())
 
@@ -862,7 +860,7 @@ def publish_from_queue(vk):
     text = post_data["text"]
     attachments = post_data["attachments"]
 
-    logging.info(f"📨 Публикация #{post_id}: текст={text[:50] if text else 'нет'}")
+    logging.info(f"📨 Планирование поста #{post_id}: текст={text[:50] if text else 'нет'}")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
@@ -873,20 +871,46 @@ def publish_from_queue(vk):
         except:
             final_text = f"{text}\n\nАвтор: id{from_id}"
 
-    try:
-        kwargs = {
-            "owner_id": -GROUP_ID,
-            "message": final_text,
-            "from_group": 1
-        }
-        if attachments:
-            kwargs["attachments"] = attachments
+    pub_time = get_next_free_hour()
+    posted = False
+    for attempt in range(24):
+        try:
+            kwargs = {
+                "owner_id": -GROUP_ID,
+                "message": final_text,
+                "from_group": 1,
+                "publish_date": pub_time
+            }
+            if attachments:
+                kwargs["attachments"] = attachments
 
-        result = vk.wall.post(**kwargs)
-        logging.info(f"✅ Опубликован #{post_id} → #{result.get('post_id', '?')} от {from_id}")
+            result = vk.wall.post(**kwargs)
+            posted = True
+            break
+        except Exception as e:
+            if "214" in str(e) or "already scheduled" in str(e):
+                pub_time += 3600
+                logging.info(f"⏰ Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
+            else:
+                logging.error(f"❌ Ошибка планирования #{post_id}: {e}")
+                break
+
+    if posted:
+        add_scheduled_post(pub_time, text[:200], from_id)
         add_published_post(post_id, from_id, text)
         last_user_post_time = time.time()
-    except vk_api.exceptions.ApiError as e:
-        logging.error(f"❌ VK API ошибка #{post_id}: code={e.code}, msg={e}")
-    except Exception as e:
-        logging.error(f"❌ Ошибка публикации #{post_id}: {type(e).__name__}: {e}")
+        pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
+        logging.info(f"✅ Пост #{post_id} запланирован на {pub_str} от {from_id}")
+
+        if from_id:
+            try:
+                vk.messages.send(
+                    user_id=from_id,
+                    message=f"✅ Твой пост запланирован на {pub_str} МСК и появится на стене.",
+                    random_id=0,
+                    group_id=GROUP_ID
+                )
+            except:
+                pass
+    else:
+        logging.error(f"❌ Не удалось запланировать пост #{post_id}")
