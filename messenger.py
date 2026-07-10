@@ -1,3 +1,5 @@
+# messenger.py — полностью
+
 import re
 import time
 import logging
@@ -277,31 +279,69 @@ def run_messenger():
                     continue
 
                 date_str = chosen.strftime("%Y-%m-%d")
+                state["mode"] = "reddit_pick_range"
+                state["date"] = date_str
+                admin_state[user_id] = state
+                send_or_edit(vk, user_id,
+                             f"📅 {chosen.strftime('%d.%m')} — выбери время суток:",
+                             get_reddit_range_keyboard())
+                continue
+
+            # Reddit: выбор диапазона времени
+            if mode == "reddit_pick_range":
+                if t in ["🔙 в админку", "❌ отмена"]:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
+                    continue
+
+                date_str = state.get("date")
                 busy = [datetime.fromtimestamp(p["time"]).hour
                         for p in get_scheduled_posts()
                         if datetime.fromtimestamp(p["time"]).strftime("%Y-%m-%d") == date_str
                         and datetime.fromtimestamp(p["time"]).minute == 0]
 
+                ranges = {
+                    "🌅 утро": (8, 11),
+                    "☀️ день": (12, 16),
+                    "🌆 вечер": (17, 20),
+                    "🌙 ночь": (21, 23),
+                }
+
+                matched = None
+                for label, (start, end) in ranges.items():
+                    if label in t:
+                        matched = (start, end)
+                        break
+
+                if not matched:
+                    send_or_edit(vk, user_id, "🕒 Выбери диапазон кнопкой:", get_reddit_range_keyboard())
+                    continue
+
+                start, end = matched
                 state["mode"] = "reddit_pick_hour"
-                state["date"] = date_str
                 admin_state[user_id] = state
                 send_or_edit(vk, user_id,
-                             f"🕒 Выбери час на {chosen.strftime('%d.%m')} (красным — занято):",
-                             get_reddit_hour_keyboard(busy))
+                             f"🕒 Выбери час ({start}:00 – {end}:00):",
+                             get_reddit_hour_keyboard(busy, start, end))
                 continue
 
             # Reddit: выбор часа публикации
             if mode == "reddit_pick_hour":
-                if t in ["🔙 в админку", "❌ отмена", "🔙 отмена"]:
+                if t == "⬅️ к диапазонам":
+                    date_str = state.get("date")
+                    state["mode"] = "reddit_pick_range"
+                    admin_state[user_id] = state
+                    send_or_edit(vk, user_id, "🕒 Выбери время суток:", get_reddit_range_keyboard())
+                    continue
+
+                if t in ["🔙 в админку", "❌ отмена"]:
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
                     continue
 
                 m = re.match(r'^\s*(\d{1,2}):00\s*$', text)
                 if not m:
-                    logging.warning(f"Не смог спарсить час из текста: '{text}'")
-                    send_or_edit(vk, user_id, "🕒 Выбери час кнопкой:",
-                                 get_reddit_hour_keyboard([]))
+                    send_or_edit(vk, user_id, "🕒 Выбери час кнопкой или введи вручную (например 15):")
                     continue
 
                 hour = int(m.group(1))
@@ -317,8 +357,7 @@ def run_messenger():
 
                 pub_time = int(base_dt.timestamp())
                 if pub_time <= int(time.time()) + 60:
-                    send_or_edit(vk, user_id, "⏰ Это время уже прошло, выбери другой час.",
-                                 get_reddit_hour_keyboard([]))
+                    send_or_edit(vk, user_id, "⏰ Это время уже прошло, выбери другой час.")
                     continue
 
                 logging.info(f"📅 Публикация Reddit поста на {datetime.fromtimestamp(pub_time).strftime('%d.%m %H:%M')}")
