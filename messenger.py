@@ -641,7 +641,6 @@ def run_messenger():
                 text = post.get("text", "")
                 attachments_list = post.get("attachments", [])
 
-                # Собираем вложения
                 att_str = ""
                 for a in attachments_list:
                     t = a.get("type", "")
@@ -661,7 +660,6 @@ def run_messenger():
                 pending_posts.append(post_data)
                 logging.info(f"📨 Предложка: пост #{post_id} от {from_id} (очередь: {len(pending_posts)})")
 
-                # Уведомление админу
                 if ADMIN_ID:
                     try:
                         author_name = get_user_name(vk, from_id)
@@ -681,7 +679,6 @@ def run_messenger():
             except Exception as e:
                 logging.error(f"❌ Ошибка обработки предложки: {e}")
 
-        # Периодическая публикация из очереди
         try:
             now = time.time()
             if now - last_user_post_time >= PUBLISH_INTERVAL and pending_posts:
@@ -703,7 +700,9 @@ def publish_from_queue(vk):
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
-    attachments = post_data["attachments"]
+    attachments = post_data["attachments"].rstrip(',') if post_data["attachments"] else ""
+
+    logging.info(f"📨 Публикация предложки #{post_id}: текст={text[:50] if text else 'нет'}, вложения={attachments[:100] if attachments else 'нет'}")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
@@ -715,15 +714,19 @@ def publish_from_queue(vk):
             final_text = f"{text}\n\nАвтор: id{from_id}"
 
     try:
-        vk.wall.post(
-            owner_id=-GROUP_ID,
-            message=final_text,
-            attachments=attachments if attachments else None,
-            from_group=1
-        )
+        kwargs = {
+            "owner_id": -GROUP_ID,
+            "message": final_text,
+            "from_group": 1
+        }
+        if attachments:
+            kwargs["attachments"] = attachments
+
+        result = vk.wall.post(**kwargs)
+        logging.info(f"✅ Предложка: опубликован #{post_id} → #{result.get('post_id', '?')} от {from_id}")
+        
         vk.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
         add_published_post(post_id, from_id, text)
         last_user_post_time = time.time()
-        logging.info(f"✅ Предложка: опубликован #{post_id} от {from_id}")
     except Exception as e:
-        logging.error(f"❌ Ошибка публикации предложки: {e}")
+        logging.error(f"❌ Ошибка публикации предложки #{post_id}: {e}")
