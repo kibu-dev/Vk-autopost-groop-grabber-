@@ -4,7 +4,7 @@ from config import *
 from utils import *
 
 def run_group_acceptor():
-    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
+    vk = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
     print("👥 Приём в группу запущен")
 
     while True:
