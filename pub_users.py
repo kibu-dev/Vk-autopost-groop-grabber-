@@ -7,10 +7,8 @@ from utils import *
 
 
 def _get_api():
-    # Для чтения предложки нужен токен с правами администратора сообщества.
-    # Сначала пробуем USER_TOKEN (токен админа), иначе — токен группы.
-    token = USER_TOKEN or GROUP_TOKEN
-    return vk_api.VkApi(token=token, api_version="5.131").get_api()
+    # Работаем только с токеном группы (юзер-токен не используем).
+    return vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
 
 
 def _can_read_suggests(vk):
@@ -18,19 +16,19 @@ def _can_read_suggests(vk):
         vk.wall.get(owner_id=-GROUP_ID, filter="suggests", count=1)
         return True
     except Exception as e:
-        logging.warning(f"⚠️ Предложка недоступна для токена ({e}). "
+        logging.warning(f"⚠️ Предложка недоступна для токена группы ({e}). "
                         f"Посты будут приниматься только через ЛС бота.")
         return False
 
 
 def run_pub_users():
-    if not (USER_TOKEN or GROUP_TOKEN):
-        logging.warning("👤 Публикатор предложки: нет токена, пропуск.")
+    if not GROUP_TOKEN:
+        logging.warning("👤 Публикатор предложки: нет токена группы, пропуск.")
         return
 
     vk = _get_api()
 
-    # Если у токена нет прав/методов на предложку — молча выходим,
+    # Если у токена группы нет прав/методов на предложку — молча выходим,
     # тогда работает запасной вариант: пользователь пишет пост боту в ЛС.
     if not _can_read_suggests(vk):
         return

@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROUP_TOKEN = os.getenv("GROUP_TOKEN")
-USER_TOKEN = os.getenv("USER_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID"))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
