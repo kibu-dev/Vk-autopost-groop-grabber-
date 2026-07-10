@@ -1,8 +1,9 @@
 import re
+import time
 import logging
 import vk_api
 import requests as req
-from vk_api.longpoll import VkLongPoll, VkEventType
+from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from datetime import datetime
 from config import *
 from utils import *
@@ -16,22 +17,28 @@ from holidays import (
 waiting_support = set()
 selected_post = {}
 admin_state = {}
-pending_posts = []  # Очередь предложенных постов
-last_user_post_time = 0  # Время последней публикации из предложки
+pending_posts = []
+last_user_post_time = 0
 
 def run_messenger():
     global last_user_post_time
     
     vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131")
     vk = vk_session.get_api()
-    longpoll = VkLongPoll(vk_session, group_id=GROUP_ID, mode=2, preload_messages=True)
+    longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID, wait=25)
     logging.info("🤖 ЛС бот запущен")
 
     for event in longpoll.listen():
-        if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-            user_id = event.user_id
-            text = event.text.strip() if event.text else ""
+        # === СООБЩЕНИЯ ===
+        if event.type == VkBotEventType.MESSAGE_NEW:
+            msg = event.object.get("message", {})
+            user_id = msg.get("from_id")
+            text = msg.get("text", "").strip()
             is_admin = (user_id == ADMIN_ID)
+            message_id = msg.get("id")
+
+            if not user_id or not text:
+                continue
 
             logging.info(f"MSG: '{text[:80]}' | ADMIN: {is_admin} | STATE: {admin_state.get(user_id, {}).get('mode', 'none')}")
 
@@ -259,9 +266,9 @@ def run_messenger():
                     if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
                     attachments = []
                     try:
-                        msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
-                        if msg and msg.get("items"):
-                            for att in msg["items"][0].get("attachments", []):
+                        msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
+                        if msg_data and msg_data.get("items"):
+                            for att in msg_data["items"][0].get("attachments", []):
                                 att_type = att.get("type"); att_obj = att.get(att_type, {})
                                 oid = att_obj.get("owner_id"); iid = att_obj.get("id")
                                 if oid and iid: attachments.append(f"{att_type}{oid}_{iid}")
@@ -344,9 +351,9 @@ def run_messenger():
                     if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
                     photo_saved = False
                     try:
-                        msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
-                        if msg and msg.get("items"):
-                            for att in msg["items"][0].get("attachments", []):
+                        msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
+                        if msg_data and msg_data.get("items"):
+                            for att in msg_data["items"][0].get("attachments", []):
                                 if att.get("type") == "photo":
                                     att_obj = att.get("photo", {}); sizes = att_obj.get("sizes", [])
                                     if sizes:
@@ -367,9 +374,9 @@ def run_messenger():
                     if t in ["🔙 отмена", "❌ отмена"]: admin_state.pop(user_id, None); send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard()); continue
                     photo_saved = False
                     try:
-                        msg = vk.messages.getById(message_ids=event.message_id, group_id=GROUP_ID)
-                        if msg and msg.get("items"):
-                            for att in msg["items"][0].get("attachments", []):
+                        msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
+                        if msg_data and msg_data.get("items"):
+                            for att in msg_data["items"][0].get("attachments", []):
                                 if att.get("type") == "photo":
                                     att_obj = att.get("photo", {}); sizes = att_obj.get("sizes", [])
                                     if sizes:
@@ -418,7 +425,7 @@ def run_messenger():
                 if text.lower() not in ["🔙 отмена", "/cancel"]:
                     if ADMIN_ID:
                         try:
-                            vk.messages.send(user_id=ADMIN_ID, message=f"📨 ОБРАЩЕНИЕ\nhttps://vk.com/gim{GROUP_ID}?sel={user_id}", random_id=0, forward_messages=event.message_id, group_id=GROUP_ID)
+                            vk.messages.send(user_id=ADMIN_ID, message=f"📨 ОБРАЩЕНИЕ\nhttps://vk.com/gim{GROUP_ID}?sel={user_id}", random_id=0, forward_messages=message_id, group_id=GROUP_ID)
                             send_message(vk, user_id, "✅ Отправлено!", get_main_keyboard())
                         except: send_message(vk, user_id, "❌ Ошибка.", get_main_keyboard())
                 else: send_message(vk, user_id, "Отменено.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
@@ -544,8 +551,6 @@ def run_messenger():
                     try: idx = int(t.split()[-1]); remove_pending_grab(idx); send_message(vk, user_id, "❌ Удалён.", get_admin_main_keyboard())
                     except: send_message(vk, user_id, "❌ Ошибка.", get_admin_main_keyboard())
 
-                elif t == "⚙️ автоматизация": send_message(vk, user_id, "⚙️ Автоматизация:", get_automation_keyboard())
-
                 elif t == "🔮 гороскоп":
                     config = load_json("horoscope_config.json", {})
                     next_m = get_horoscope_next_monday(); next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
@@ -556,7 +561,7 @@ def run_messenger():
                     config = load_json("horoscope_config.json", {}); config["next_monday"] = ""; save_json("horoscope_config.json", config)
                     send_message(vk, user_id, "🔄 Создаю новый гороскоп...")
                     from weekly_horoscope import create_horoscope
-                    if create_horoscope():
+                    if create_horoscope(vk, vk):
                         config = load_json("horoscope_config.json", {}); next_m = config.get("next_monday", "")
                         next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
                         msg = f"✅ Готово!\n🔮 Гороскоп: {'Включен ✅' if get_horoscope_enabled() else 'Выключен ❌'}\nСледующий: {next_str}"
@@ -627,10 +632,10 @@ def run_messenger():
             else:
                 send_message(vk, user_id, "Нажмите кнопку.", get_admin_main_keyboard() if is_admin else get_main_keyboard())
 
-        # === ОБРАБОТКА СОБЫТИЙ WALL_POST_NEW (ПРЕДЛОЖКА) ===
-        elif event.type == VkEventType.WALL_POST_NEW:
+        # === ПРЕДЛОЖКА ===
+        elif event.type == VkBotEventType.WALL_POST_NEW:
             try:
-                post = event.raw.get("object", {})
+                post = event.object
                 post_id = post.get("id", 0)
                 from_id = post.get("from_id", 0)
                 text = post.get("text", "")
@@ -646,7 +651,6 @@ def run_messenger():
                     if oid and iid:
                         att_str += f"{t}{oid}_{iid},"
 
-                # Добавляем в очередь
                 post_data = {
                     "post_id": post_id,
                     "from_id": from_id,
@@ -673,15 +677,14 @@ def run_messenger():
                         group_id=GROUP_ID
                     )
 
-                # Пробуем опубликовать из очереди
                 publish_from_queue(vk)
             except Exception as e:
                 logging.error(f"❌ Ошибка обработки предложки: {e}")
 
-        # Периодически пробуем публиковать из очереди
+        # Периодическая публикация из очереди
         try:
             now = time.time()
-            if now - last_user_post_time >= PUBLISH_INTERVAL:
+            if now - last_user_post_time >= PUBLISH_INTERVAL and pending_posts:
                 publish_from_queue(vk)
         except:
             pass
@@ -702,7 +705,6 @@ def publish_from_queue(vk):
     text = post_data["text"]
     attachments = post_data["attachments"]
 
-    # Формируем подпись автора
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
     else:
