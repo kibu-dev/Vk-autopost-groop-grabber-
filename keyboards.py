@@ -16,7 +16,8 @@ def get_posts_keyboard(posts):
     for i, p in enumerate(posts[:10], 1):
         preview = (p["text"][:20] + "...") if len(p["text"]) > 20 else p["text"]
         k.add_button(f"🗑 {i}. #{p['post_id']}: {preview}", VkKeyboardColor.SECONDARY)
-        if i % 2 == 0 and i != len(posts[:10]): k.add_line()
+        if i % 2 == 0 and i != len(posts[:10]):
+            k.add_line()
     k.add_line()
     k.add_button("🔙 Назад", VkKeyboardColor.PRIMARY)
     return k
@@ -98,7 +99,7 @@ def get_reddit_hour_keyboard(busy_hours):
         color = VkKeyboardColor.NEGATIVE if h in busy else VkKeyboardColor.SECONDARY
         hour_str = f"{h:02d}:00"
         k.add_button(hour_str, color)
-        if (h + 1) % 5 == 0:
+        if (h + 1) % 6 == 0 and h != 23:
             k.add_line()
     k.add_line()
     k.add_button("🔙 В админку", VkKeyboardColor.SECONDARY)
@@ -197,4 +198,12 @@ def get_holiday_confirm_keyboard():
     k.add_line()
     k.add_button("🔄 Ещё вариант", VkKeyboardColor.SECONDARY)
     k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
+    return k
+
+def get_moderation_keyboard(post_id):
+    """Клавиатура для модерации подозрительных постов."""
+    k = VkKeyboard(inline=True, one_time=False)
+    k.add_button(f"✅ Опубликовать #{post_id}", VkKeyboardColor.POSITIVE)
+    k.add_line()
+    k.add_button(f"❌ Отклонить #{post_id}", VkKeyboardColor.NEGATIVE)
     return k
