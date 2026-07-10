@@ -13,10 +13,73 @@ from holidays import (
     get_holidays_config, save_holidays_config, generate_holidays_list,
     get_holiday_publish_time, create_holiday_post, generate_holiday_text
 )
+from reddit_handler import load_drafts, save_drafts, upload_photos_to_vk
 
 waiting_support = set()
 selected_post = {}
 admin_state = {}
+
+
+def format_reddit_preview(d, idx, total):
+    """Форматирует превью Reddit-поста для показа админу."""
+    msg = f"📱 Пост {idx+1}/{total} | {d.get('subreddit', '')}\n\n"
+    if d.get('title'):
+        msg += f"📌 {d['title']}\n\n"
+    if d.get('text'):
+        msg += f"{d['text'][:500]}\n\n"
+    if d.get('images'):
+        msg += f"🖼 Фото: {len(d['images'])} шт.\n"
+    if d.get('url'):
+        msg += f"🔗 {d['url']}"
+    return msg
+
+
+def show_reddit_draft(vk, user_id, drafts, ids, idx):
+    """Показывает черновик Reddit и обновляет стейт. Если список пуст — выход в админку."""
+    pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+    ids[:] = list(pending.keys())
+    if not ids:
+        admin_state.pop(user_id, None)
+        send_message(vk, user_id, "📱 Все посты обработаны!", get_admin_main_keyboard())
+        return
+
+    idx = min(idx, len(ids) - 1)
+    d = pending[ids[idx]]
+    msg = format_reddit_preview(d, idx, len(ids))
+    admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+    send_or_edit(vk, user_id, msg, get_reddit_post_keyboard(
+        bool(d.get('text', '').strip()),
+        bool(d.get('title', '').strip())
+    ))
+
+
+def upload_photo_from_message(vk, user_id, message_id):
+    """Загружает фото из сообщения на стену группы. Возвращает attachment-строку или None."""
+    try:
+        msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
+        if msg_data and msg_data.get("items"):
+            for att in msg_data["items"][0].get("attachments", []):
+                if att.get("type") == "photo":
+                    att_obj = att.get("photo", {})
+                    sizes = att_obj.get("sizes", [])
+                    if sizes:
+                        biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                        if biggest.get("url"):
+                            img_data = req.get(biggest["url"]).content
+                            up_server = vk.photos.getWallUploadServer(group_id=GROUP_ID)
+                            up = req.post(up_server['upload_url'],
+                                          files={'photo': ('img.jpg', img_data, 'image/jpeg')}).json()
+                            if 'photo' in up and up['photo']:
+                                saved = vk.photos.saveWallPhoto(
+                                    photo=up['photo'], server=up['server'],
+                                    hash=up['hash'], group_id=GROUP_ID
+                                )
+                                if saved:
+                                    return f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
+    except Exception as e:
+        logging.error(f"Ошибка загрузки фото: {e}")
+    return None
+
 
 def run_messenger():
     vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131")
@@ -52,13 +115,15 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_main_keyboard())
                     continue
 
+                # Собираем вложения из сообщения пользователя
                 attachments = ""
                 try:
                     msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
                     if msg_data and msg_data.get("items"):
-                        attachments = build_attachments(msg_data["items"][0]) or ""
-                except:
-                    pass
+                        attachments = build_attachments(msg_data["items"][0])
+                        logging.info(f"📎 Вложения от юзера: {attachments[:200] if attachments else 'нет'}")
+                except Exception as e:
+                    logging.error(f"Ошибка получения вложений: {e}")
 
                 post_data = {
                     "post_id": message_id,
@@ -96,7 +161,6 @@ def run_messenger():
             # === REDDIT NAVIGATION ===
             if mode == "reddit_view":
                 logging.info("REDDIT VIEW MODE")
-                from reddit_handler import load_drafts, save_drafts
                 drafts = load_drafts()
                 pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
                 ids = state.get("ids", [])
@@ -107,10 +171,15 @@ def run_messenger():
                     send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
                     continue
 
-                if t == "⬅️ назад": 
+                if t == "⬅️ назад":
                     idx = (idx - 1) % len(ids)
-                elif t == "➡️ вперёд": 
+                    show_reddit_draft(vk, user_id, drafts, ids, idx)
+                    continue
+
+                elif t == "➡️ вперёд":
                     idx = (idx + 1) % len(ids)
+                    show_reddit_draft(vk, user_id, drafts, ids, idx)
+                    continue
 
                 elif t == "✅ опубликовать":
                     draft_id = ids[idx]
@@ -134,40 +203,22 @@ def run_messenger():
                     original_text = d.get("original_text", d.get("text", ""))
                     original_title = d.get("original_title", d.get("title", ""))
 
+                    send_or_edit(vk, user_id, "⏳ Перевожу...")
+
                     if original_title:
-                        send_message(vk, user_id, "⏳ Перевожу заголовок...")
                         translated_title = translate_text(original_title)
-                        if translated_title: 
+                        if translated_title:
                             drafts[draft_id]["title"] = translated_title
 
                     if original_text:
-                        send_message(vk, user_id, "⏳ Перевожу текст...")
                         translated_text = translate_text(original_text)
                         if translated_text:
                             drafts[draft_id]["text"] = translated_text
                             drafts[draft_id]["translated"] = True
 
                     save_drafts(drafts)
-                    send_message(vk, user_id, "✅ Переведено!")
-                    pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
-                    ids = list(pending.keys())
-                    if ids:
-                        idx = min(idx, len(ids) - 1)
-                        d = pending[ids[idx]]
-                        msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
-                        if d.get('title'): 
-                            msg += f"📌 {d['title']}\n\n"
-                        if d.get('text'): 
-                            msg += f"{d['text'][:500]}\n\n"
-                        if d.get('images'): 
-                            msg += f"🖼 Фото: {len(d['images'])} шт.\n"
-                        if d.get('url'): 
-                            msg += f"🔗 {d['url']}"
-                        admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
-                    else:
-                        admin_state.pop(user_id, None)
-                        send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
+                    # Остаёмся на том же посте
+                    show_reddit_draft(vk, user_id, drafts, ids, idx)
                     continue
 
                 elif "перефразировать" in t:
@@ -175,33 +226,13 @@ def run_messenger():
                     d = pending[draft_id]
                     original = d.get("text", "")
                     if original:
-                        send_message(vk, user_id, "⏳ Перефразирую...")
+                        send_or_edit(vk, user_id, "⏳ Перефразирую...")
                         rewritten = rewrite_text(original)
                         if rewritten:
                             drafts[draft_id]["text"] = rewritten
                             save_drafts(drafts)
-                            send_message(vk, user_id, f"✅ Готово!")
-                        else:
-                            send_message(vk, user_id, "❌ Ошибка.")
-                    pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
-                    ids = list(pending.keys())
-                    if ids:
-                        idx = min(idx, len(ids) - 1)
-                        d = pending[ids[idx]]
-                        msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
-                        if d.get('title'): 
-                            msg += f"📌 {d['title']}\n\n"
-                        if d.get('text'): 
-                            msg += f"{d['text'][:500]}\n\n"
-                        if d.get('images'): 
-                            msg += f"🖼 Фото: {len(d['images'])} шт.\n"
-                        if d.get('url'): 
-                            msg += f"🔗 {d['url']}"
-                        admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
-                    else:
-                        admin_state.pop(user_id, None)
-                        send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
+                    # Остаёмся на том же посте
+                    show_reddit_draft(vk, user_id, drafts, ids, idx)
                     continue
 
                 elif "править" in t:
@@ -212,25 +243,8 @@ def run_messenger():
                 elif "удалить" in t:
                     del drafts[ids[idx]]
                     save_drafts(drafts)
-                    pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
-                    ids = list(pending.keys())
-                    if ids:
-                        idx = min(idx, len(ids) - 1)
-                        d = pending[ids[idx]]
-                        msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
-                        if d.get('title'): 
-                            msg += f"📌 {d['title']}\n\n"
-                        if d.get('text'): 
-                            msg += f"{d['text'][:500]}\n\n"
-                        if d.get('images'): 
-                            msg += f"🖼 Фото: {len(d['images'])} шт.\n"
-                        if d.get('url'): 
-                            msg += f"🔗 {d['url']}"
-                        admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                        send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
-                    else:
-                        admin_state.pop(user_id, None)
-                        send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
+                    # Показываем следующий пост (или предыдущий, если удалили последний)
+                    show_reddit_draft(vk, user_id, drafts, ids, idx)
                     continue
 
                 elif t == "🔙 в админку":
@@ -238,25 +252,8 @@ def run_messenger():
                     send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
                     continue
 
-                pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
-                ids = list(pending.keys())
-                if not ids:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "📱 Нет постов.", get_admin_main_keyboard())
-                    continue
-                idx = min(idx, len(ids) - 1)
-                d = pending[ids[idx]]
-                msg = f"📱 Пост {idx+1}/{len(ids)} | {d.get('subreddit', '')}\n\n"
-                if d.get('title'): 
-                    msg += f"📌 {d['title']}\n\n"
-                if d.get('text'): 
-                    msg += f"{d['text'][:500]}\n\n"
-                if d.get('images'): 
-                    msg += f"🖼 Фото: {len(d['images'])} шт.\n"
-                if d.get('url'): 
-                    msg += f"🔗 {d['url']}"
-                admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-                send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
+                # Действие по умолчанию — показать текущий пост
+                show_reddit_draft(vk, user_id, drafts, ids, idx)
                 continue
 
             # Reddit: выбор даты публикации
@@ -265,13 +262,12 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
                     continue
-                
-                # Ищем дату в формате дд.мм
+
                 m = re.search(r'(\d{2})\.(\d{2})', text)
                 if not m:
-                    send_message(vk, user_id, "📅 Выбери дату кнопкой:", get_reddit_date_keyboard())
+                    send_or_edit(vk, user_id, "📅 Выбери дату кнопкой:", get_reddit_date_keyboard())
                     continue
-                
+
                 day, month = int(m.group(1)), int(m.group(2))
                 base = datetime.now()
                 chosen = None
@@ -280,21 +276,21 @@ def run_messenger():
                     if cand.day == day and cand.month == month:
                         chosen = cand
                         break
-                
+
                 if not chosen:
-                    send_message(vk, user_id, "📅 Не понял дату, выбери кнопкой:", get_reddit_date_keyboard())
+                    send_or_edit(vk, user_id, "📅 Не понял дату, выбери кнопкой:", get_reddit_date_keyboard())
                     continue
-                
+
                 date_str = chosen.strftime("%Y-%m-%d")
                 busy = [datetime.fromtimestamp(p["time"]).hour
                         for p in get_scheduled_posts()
                         if datetime.fromtimestamp(p["time"]).strftime("%Y-%m-%d") == date_str
                         and datetime.fromtimestamp(p["time"]).minute == 0]
-                
+
                 state["mode"] = "reddit_pick_hour"
                 state["date"] = date_str
                 admin_state[user_id] = state
-                send_message(vk, user_id,
+                send_or_edit(vk, user_id,
                              f"🕒 Выбери час на {chosen.strftime('%d.%m')} (красным — занято):",
                              get_reddit_hour_keyboard(busy))
                 continue
@@ -305,18 +301,17 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
                     continue
-                
-                # Ищем время в формате чч:00
+
                 m = re.match(r'^\s*(\d{1,2}):00\s*$', text)
                 if not m:
                     logging.warning(f"Не смог спарсить час из текста: '{text}'")
-                    send_message(vk, user_id, "🕒 Выбери час кнопкой:",
+                    send_or_edit(vk, user_id, "🕒 Выбери час кнопкой:",
                                  get_reddit_hour_keyboard([]))
                     continue
-                
+
                 hour = int(m.group(1))
                 date_str = state.get("date")
-                
+
                 try:
                     base_dt = datetime.strptime(f"{date_str} {hour:02d}:00", "%Y-%m-%d %H:%M")
                 except Exception as e:
@@ -324,13 +319,13 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Ошибка даты.", get_admin_main_keyboard())
                     continue
-                
+
                 pub_time = int(base_dt.timestamp())
                 if pub_time <= int(time.time()) + 60:
-                    send_message(vk, user_id, "⏰ Это время уже прошло, выбери другой час.",
+                    send_or_edit(vk, user_id, "⏰ Это время уже прошло, выбери другой час.",
                                  get_reddit_hour_keyboard([]))
                     continue
-                
+
                 logging.info(f"📅 Публикация Reddit поста на {datetime.fromtimestamp(pub_time).strftime('%d.%m %H:%M')}")
                 publish_reddit_draft(vk, user_id, state["draft_id"], pub_time, state.get("photo_only", False))
                 admin_state.pop(user_id, None)
@@ -342,18 +337,12 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-                attachments = []
+                attachments = ""
                 try:
                     msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
                     if msg_data and msg_data.get("items"):
-                        for att in msg_data["items"][0].get("attachments", []):
-                            att_type = att.get("type")
-                            att_obj = att.get(att_type, {})
-                            oid = att_obj.get("owner_id")
-                            iid = att_obj.get("id")
-                            if oid and iid: 
-                                attachments.append(f"{att_type}{oid}_{iid}")
-                except: 
+                        attachments = build_attachments(msg_data["items"][0])
+                except:
                     pass
                 admin_state[user_id] = {"mode": "ai_choose", "text": text, "variants": [], "attachments": attachments}
                 send_message(vk, user_id, "⏳ Генерирую пост...")
@@ -362,7 +351,7 @@ def run_messenger():
                     variants = parse_variants(result)
                     if variants and len(variants[0]) > 20:
                         admin_state[user_id]["variants"] = variants
-                        send_message(vk, user_id, f"🤖 Готовый пост:\n\n{variants[0]}", get_variants_keyboard())
+                        send_or_edit(vk, user_id, f"🤖 Готовый пост:\n\n{variants[0]}", get_variants_keyboard())
                     else:
                         send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
                         admin_state.pop(user_id, None)
@@ -374,7 +363,7 @@ def run_messenger():
             if mode == "ai_choose":
                 if t == "✅ опубликовать":
                     chosen = state["variants"][0] if state.get("variants") else state["text"]
-                    att = ",".join(state.get("attachments", [])) or None
+                    att = state.get("attachments", "") or None
                     r = vk.wall.post(owner_id=-GROUP_ID, message=chosen, attachments=att, from_group=1)
                     add_published_post(r["post_id"], ADMIN_ID, chosen)
                     admin_state.pop(user_id, None)
@@ -388,7 +377,7 @@ def run_messenger():
                         variants = parse_variants(result)
                         if variants and len(variants[0]) > 20:
                             state["variants"] = variants
-                            send_message(vk, user_id, f"🤖 Новый вариант:\n\n{variants[0]}", get_variants_keyboard())
+                            send_or_edit(vk, user_id, f"🤖 Новый вариант:\n\n{variants[0]}", get_variants_keyboard())
                         else:
                             send_message(vk, user_id, "❌ Не удалось.", get_admin_main_keyboard())
                     else:
@@ -403,7 +392,7 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-                att = ",".join(state.get("attachments", [])) or None
+                att = state.get("attachments", "") or None
                 r = vk.wall.post(owner_id=-GROUP_ID, message=text, attachments=att, from_group=1)
                 add_published_post(r["post_id"], ADMIN_ID, text)
                 admin_state.pop(user_id, None)
@@ -416,7 +405,6 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
                 draft_id = state.get("draft_id")
-                from reddit_handler import load_drafts, save_drafts
                 drafts = load_drafts()
                 if draft_id in drafts:
                     if t != "-":
@@ -435,16 +423,27 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
                 draft_id = state.get("draft_id")
-                from reddit_handler import load_drafts, save_drafts
                 drafts = load_drafts()
                 if draft_id in drafts:
                     if t != "-":
                         drafts[draft_id]["text"] = text
                     save_drafts(drafts)
-                    send_message(vk, user_id, "✅ Текст обновлён!", get_admin_main_keyboard())
+                    # После редактирования возвращаемся в просмотр Reddit
+                    pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                    ids = list(pending.keys())
+                    if ids:
+                        # Ищем отредактированный пост в списке
+                        try:
+                            idx = ids.index(draft_id)
+                        except ValueError:
+                            idx = 0
+                        show_reddit_draft(vk, user_id, drafts, ids, idx)
+                    else:
+                        admin_state.pop(user_id, None)
+                        send_message(vk, user_id, "📱 Все посты обработаны!", get_admin_main_keyboard())
                 else:
+                    admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
-                admin_state.pop(user_id, None)
                 continue
 
             if mode == "horoscope_photo":
@@ -452,29 +451,12 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-                photo_saved = False
-                try:
-                    msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
-                    if msg_data and msg_data.get("items"):
-                        for att in msg_data["items"][0].get("attachments", []):
-                            if att.get("type") == "photo":
-                                att_obj = att.get("photo", {})
-                                sizes = att_obj.get("sizes", [])
-                                if sizes:
-                                    biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                                    if biggest.get("url"):
-                                        img_data = req.get(biggest["url"]).content
-                                        up_server = vk.photos.getWallUploadServer(group_id=GROUP_ID)
-                                        up = req.post(up_server['upload_url'], files={'photo': ('h.jpg', img_data, 'image/jpeg')}).json()
-                                        if 'photo' in up and up['photo']:
-                                            saved = vk.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
-                                            if saved:
-                                                set_horoscope_photo(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
-                                                photo_saved = True
-                                        break
-                except: 
-                    pass
-                send_message(vk, user_id, "✅ Фото сохранено!" if photo_saved else "❌ Не удалось.", get_horoscope_keyboard())
+                photo_id = upload_photo_from_message(vk, user_id, message_id)
+                if photo_id:
+                    set_horoscope_photo(photo_id)
+                    send_message(vk, user_id, "✅ Фото сохранено!", get_horoscope_keyboard())
+                else:
+                    send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_horoscope_keyboard())
                 admin_state.pop(user_id, None)
                 continue
 
@@ -483,41 +465,20 @@ def run_messenger():
                     admin_state.pop(user_id, None)
                     send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                     continue
-                photo_saved = False
-                try:
-                    msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
-                    if msg_data and msg_data.get("items"):
-                        for att in msg_data["items"][0].get("attachments", []):
-                            if att.get("type") == "photo":
-                                att_obj = att.get("photo", {})
-                                sizes = att_obj.get("sizes", [])
-                                if sizes:
-                                    biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                                    if biggest.get("url"):
-                                        img_data = req.get(biggest["url"]).content
-                                        up_server = vk.photos.getWallUploadServer(group_id=GROUP_ID)
-                                        up = req.post(up_server['upload_url'], files={'photo': ('hol.jpg', img_data, 'image/jpeg')}).json()
-                                        if 'photo' in up and up['photo']:
-                                            saved = vk.photos.saveWallPhoto(photo=up['photo'], server=up['server'], hash=up['hash'], group_id=GROUP_ID)
-                                            if saved:
-                                                config = get_holidays_config()
-                                                config["photo_id"] = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
-                                                save_holidays_config(config)
-                                                photo_saved = True
-                                        break
-                except: 
-                    pass
-                if photo_saved:
+                photo_id = upload_photo_from_message(vk, user_id, message_id)
+                if photo_id:
                     config = get_holidays_config()
+                    config["photo_id"] = photo_id
+                    save_holidays_config(config)
                     name = config.get("selected_name", "")
-                    send_message(vk, user_id, f"✅ Фото сохранено!\n⏳ Генерирую для: {name}")
+                    send_or_edit(vk, user_id, f"✅ Фото сохранено!\n⏳ Генерирую для: {name}")
                     txt = generate_holiday_text(name)
                     if txt:
                         config["generated_text"] = txt
                         save_holidays_config(config)
-                        send_message(vk, user_id, f"🤖 Готово:\n\n{txt[:1500]}", get_holiday_confirm_keyboard())
+                        send_or_edit(vk, user_id, f"🤖 Готово:\n\n{txt[:1500]}", get_holiday_confirm_keyboard())
                     else:
-                        send_message(vk, user_id, "❌ Не удалось.", get_holidays_keyboard())
+                        send_message(vk, user_id, "❌ Не удалось сгенерировать текст.", get_holidays_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_holidays_keyboard())
                 admin_state.pop(user_id, None)
@@ -547,18 +508,22 @@ def run_messenger():
                     send_message(vk, user_id, f"✅ [{get_group_name(vk, gid)}] добавлена!", get_donor_groups_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не найдена.", get_back_admin_keyboard())
-            elif mode == "add_word":
+                admin_state.pop(user_id, None)
+                continue
+
+            if mode == "add_word":
                 add_forbidden_word(text.strip().lower())
                 send_message(vk, user_id, "✅ Добавлено!", get_forbidden_words_keyboard())
-            elif mode == "del_word":
+                admin_state.pop(user_id, None)
+                continue
+
+            if mode == "del_word":
                 w = text.strip().lower()
                 if w in get_forbidden_words():
                     remove_forbidden_word(w)
                     send_message(vk, user_id, "✅ Удалено!", get_forbidden_words_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не найдено.", get_forbidden_words_keyboard())
-
-            if mode in ["add_donor", "add_word", "del_word"]:
                 admin_state.pop(user_id, None)
                 continue
 
@@ -593,7 +558,7 @@ def run_messenger():
                 send_message(vk, user_id, "Ты админ, можешь публиковать через AI-постер или Reddit.", get_admin_main_keyboard())
             else:
                 admin_state[user_id] = {"mode": "user_post"}
-                send_message(vk, user_id, "📝 Напиши текст поста (можно с фото).\nДля анонимности добавь 'анон' в текст.", get_cancel_keyboard())
+                send_message(vk, user_id, "📝 Напиши текст поста (можно с фото/видео).\nДля анонимности добавь 'анон' в текст.", get_cancel_keyboard())
 
         elif t == "🗑 удалить мой пост":
             posts = get_user_posts(user_id)
@@ -666,7 +631,6 @@ def run_messenger():
                     send_message(vk, user_id, "📭 Список пуст.", get_forbidden_words_keyboard())
 
             elif t == "📱 reddit":
-                from reddit_handler import load_drafts
                 drafts = load_drafts()
                 pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
                 if not pending:
@@ -674,21 +638,15 @@ def run_messenger():
                     continue
                 ids = list(pending.keys())
                 d = pending[ids[0]]
-                msg = f"📱 Пост 1/{len(ids)} | {d.get('subreddit', '')}\n\n"
-                if d.get('title'): 
-                    msg += f"📌 {d['title']}\n\n"
-                if d.get('text'): 
-                    msg += f"{d['text'][:500]}\n\n"
-                if d.get('images'): 
-                    msg += f"🖼 Фото: {len(d['images'])} шт.\n"
-                if d.get('url'): 
-                    msg += f"🔗 {d['url']}"
+                msg = format_reddit_preview(d, 0, len(ids))
                 admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": 0}
-                send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
+                send_message(vk, user_id, msg, get_reddit_post_keyboard(
+                    bool(d.get('text', '').strip()),
+                    bool(d.get('title', '').strip())
+                ))
 
             elif t == "📊 статистика":
                 s = get_stats()
-                from reddit_handler import load_drafts
                 drafts = load_drafts()
                 reddit_pending = len([v for v in drafts.values() if v.get("status") == "pending"])
                 msg = f"📊 Статистика:\n• Опубликовано: {s['total_published']}\n• Запланировано: {s['scheduled_count']}\n• Reddit постов: {reddit_pending}"
@@ -727,7 +685,7 @@ def run_messenger():
                 next_m = get_horoscope_next_monday()
                 next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
                 msg = f"🔮 Гороскоп: {'Включен ✅' if get_horoscope_enabled() else 'Выключен ❌'}\nСледующий: {next_str}"
-                if config.get("text"): 
+                if config.get("text"):
                     msg += f"\n\n📝 Текст:\n{config['text'][:2500]}"
                 send_message(vk, user_id, msg, get_horoscope_keyboard())
             elif t == "🗑 пересоздать":
@@ -741,7 +699,7 @@ def run_messenger():
                     next_m = config.get("next_monday", "")
                     next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
                     msg = f"✅ Готово!\n🔮 Гороскоп: {'Включен ✅' if get_horoscope_enabled() else 'Выключен ❌'}\nСледующий: {next_str}"
-                    if config.get("text"): 
+                    if config.get("text"):
                         msg += f"\n\n📝 Текст:\n{config['text'][:2500]}"
                     send_message(vk, user_id, msg, get_horoscope_keyboard())
                 else:
@@ -796,7 +754,7 @@ def run_messenger():
                     config["selected_name"] = h["name"]
                     config["selected_date"] = h["date"]
                     save_holidays_config(config)
-                    send_message(vk, user_id, f"🎉 Праздник ({idx+1}/{len(holidays)}):\n📅 {h['date']} — {h['name']}", get_holidays_keyboard())
+                    send_or_edit(vk, user_id, f"🎉 Праздник ({idx+1}/{len(holidays)}):\n📅 {h['date']} — {h['name']}", get_holidays_keyboard())
             elif t == "➡️ следующий":
                 config = get_holidays_config()
                 holidays = config.get("holidays_list", [])
@@ -807,7 +765,7 @@ def run_messenger():
                     config["selected_name"] = h["name"]
                     config["selected_date"] = h["date"]
                     save_holidays_config(config)
-                    send_message(vk, user_id, f"🎉 Праздник ({idx+1}/{len(holidays)}):\n📅 {h['date']} — {h['name']}", get_holidays_keyboard())
+                    send_or_edit(vk, user_id, f"🎉 Праздник ({idx+1}/{len(holidays)}):\n📅 {h['date']} — {h['name']}", get_holidays_keyboard())
             elif t == "✍️ создать":
                 config = get_holidays_config()
                 name = config.get("selected_name", "")
@@ -839,7 +797,7 @@ def run_messenger():
                 if text_msg:
                     config["generated_text"] = text_msg
                     save_holidays_config(config)
-                    send_message(vk, user_id, f"🤖 Новый вариант:\n\n{text_msg[:1500]}", get_holiday_confirm_keyboard())
+                    send_or_edit(vk, user_id, f"🤖 Новый вариант:\n\n{text_msg[:1500]}", get_holiday_confirm_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Ошибка.", get_holidays_keyboard())
             elif t == "🔄 обновить":
@@ -874,11 +832,7 @@ def run_messenger():
 
 
 def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
-    """Ставит Reddit-черновик в отложенные на выбранное время.
-
-    При занятом времени (code 214) сдвигает на час вперёд.
-    """
-    from reddit_handler import load_drafts, save_drafts, upload_photos_to_vk
+    """Ставит Reddit-черновик в отложенные на выбранное время."""
     drafts = load_drafts()
     d = drafts.get(draft_id)
     if not d:
@@ -894,7 +848,7 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
         if not attachments:
             send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_admin_main_keyboard())
             return
-        post_text = ""
+        post_text = d.get("title", "")
     else:
         post_text = d.get("text", "")
         if d.get("title") and not post_text:
@@ -939,11 +893,7 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
 
 
 def schedule_user_post(vk, post_data):
-    """Ставит присланный в ЛС пост в отложенные записи группы.
-
-    Возвращает время публикации (timestamp) или None при ошибке.
-    Слоты идут с шагом PUBLISH_INTERVAL (15 минут).
-    """
+    """Ставит присланный в ЛС пост в отложенные записи группы."""
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
@@ -960,7 +910,6 @@ def schedule_user_post(vk, post_data):
         except:
             final_text = f"{text}\n\nАвтор: id{from_id}"
 
-    # Вложения (фото/видео/док) прикрепляем напрямую по access_key — скачивать не нужно.
     slot = get_next_schedule_time(PUBLISH_INTERVAL)
     kwargs = {
         "owner_id": -GROUP_ID,
