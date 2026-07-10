@@ -1,7 +1,8 @@
+from datetime import datetime, timedelta
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 def get_main_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("📝 Предложить пост", VkKeyboardColor.POSITIVE)
     k.add_line()
     k.add_button("🗑 Удалить мой пост", VkKeyboardColor.NEGATIVE)
@@ -10,7 +11,7 @@ def get_main_keyboard():
     return k
 
 def get_posts_keyboard(posts):
-    k = VkKeyboard(one_time=True)
+    k = VkKeyboard(inline=True)
     for i, p in enumerate(posts[:10], 1):
         preview = (p["text"][:20] + "...") if len(p["text"]) > 20 else p["text"]
         k.add_button(f"🗑 {i}. #{p['post_id']}: {preview}", VkKeyboardColor.SECONDARY)
@@ -19,18 +20,18 @@ def get_posts_keyboard(posts):
     return k
 
 def get_confirm_keyboard():
-    k = VkKeyboard(one_time=True)
+    k = VkKeyboard(inline=True)
     k.add_button("✅ Да, удалить", VkKeyboardColor.NEGATIVE)
     k.add_button("❌ Нет", VkKeyboardColor.SECONDARY)
     return k
 
 def get_cancel_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("🔙 Отмена", VkKeyboardColor.SECONDARY)
     return k
 
 def get_admin_main_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("📅 Очередь постов", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("👥 Группы-доноры", VkKeyboardColor.PRIMARY)
@@ -47,29 +48,58 @@ def get_admin_main_keyboard():
     return k
 
 def get_reddit_post_keyboard(has_text, has_title=False):
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("⬅️ Назад", VkKeyboardColor.PRIMARY)
     k.add_button("➡️ Вперёд", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("✅ Опубликовать", VkKeyboardColor.POSITIVE)
     k.add_button("📷 Только фото", VkKeyboardColor.POSITIVE)
+    if has_text or has_title:
+        k.add_line()
+        k.add_button("🌐 Перевести", VkKeyboardColor.PRIMARY)
+        if has_text:
+            k.add_button("✍️ Перефразировать", VkKeyboardColor.PRIMARY)
     k.add_line()
     if has_text or has_title:
-        k.add_button("🌐 Перевести", VkKeyboardColor.PRIMARY)
-        k.add_line()
-    if has_text:
-        k.add_button("✍️ Перефразировать", VkKeyboardColor.PRIMARY)
-        k.add_line()
-    if has_text or has_title:
         k.add_button("✏️ Править", VkKeyboardColor.PRIMARY)
-        k.add_line()
     k.add_button("❌ Удалить", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("🔙 В админку", VkKeyboardColor.SECONDARY)
     return k
 
+def get_reddit_date_keyboard():
+    """Инлайн-выбор даты публикации: сегодня + ближайшие дни."""
+    k = VkKeyboard(inline=True)
+    now = datetime.now()
+    days = 6
+    for i in range(days):
+        day = now + timedelta(days=i)
+        if i == 0:
+            name = "Сегодня"
+        elif i == 1:
+            name = "Завтра"
+        else:
+            name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][day.weekday()]
+        k.add_button(f"📅 {name} {day.strftime('%d.%m')}", VkKeyboardColor.PRIMARY)
+        if i % 2 == 1 and i != days - 1:
+            k.add_line()
+    k.add_line(); k.add_button("🔙 В админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_reddit_hour_keyboard(busy_hours):
+    """Инлайн-выбор часа. Занятые часы (**:00) — красным."""
+    k = VkKeyboard(inline=True)
+    busy = set(busy_hours or [])
+    for h in range(24):
+        color = VkKeyboardColor.NEGATIVE if h in busy else VkKeyboardColor.SECONDARY
+        k.add_button(f"{h:02d}:00", color)
+        if (h + 1) % 5 == 0:
+            k.add_line()
+    k.add_line(); k.add_button("🔙 В админку", VkKeyboardColor.SECONDARY)
+    return k
+
 def get_donor_groups_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("➕ Добавить группу", VkKeyboardColor.POSITIVE)
     k.add_button("➖ Удалить группу", VkKeyboardColor.NEGATIVE)
     k.add_line()
@@ -77,7 +107,7 @@ def get_donor_groups_keyboard():
     return k
 
 def get_forbidden_words_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("➕ Добавить слово", VkKeyboardColor.POSITIVE)
     k.add_button("➖ Удалить слово", VkKeyboardColor.NEGATIVE)
     k.add_line()
@@ -85,17 +115,17 @@ def get_forbidden_words_keyboard():
     return k
 
 def get_scheduled_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
 
 def get_back_admin_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("🔙 Назад в админку", VkKeyboardColor.PRIMARY)
     return k
 
 def get_remove_donor_keyboard(donors, vk_user=None):
-    k = VkKeyboard(one_time=True)
+    k = VkKeyboard(inline=True)
     for i, g in enumerate(donors[:10], 1):
         try:
             from utils import get_group_name
@@ -107,7 +137,7 @@ def get_remove_donor_keyboard(donors, vk_user=None):
     return k
 
 def get_horoscope_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("Удалить и пересоздать", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("▶️ Включить гороскоп", VkKeyboardColor.POSITIVE)
@@ -120,7 +150,7 @@ def get_horoscope_keyboard():
     return k
 
 def get_ai_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("✍️ Создать пост", VkKeyboardColor.POSITIVE)
     k.add_line()
     k.add_button("📋 Промт", VkKeyboardColor.PRIMARY)
@@ -129,7 +159,7 @@ def get_ai_keyboard():
     return k
 
 def get_variants_keyboard():
-    k = VkKeyboard(one_time=True)
+    k = VkKeyboard(inline=True)
     k.add_button("✅ Опубликовать", VkKeyboardColor.POSITIVE)
     k.add_line()
     k.add_button("✏️ Свой текст", VkKeyboardColor.PRIMARY)
@@ -139,7 +169,7 @@ def get_variants_keyboard():
     return k
 
 def get_holidays_keyboard():
-    k = VkKeyboard(one_time=False)
+    k = VkKeyboard(inline=True)
     k.add_button("⬅️ Предыдущий", VkKeyboardColor.PRIMARY)
     k.add_button("➡️ Следующий", VkKeyboardColor.PRIMARY)
     k.add_line()
@@ -151,7 +181,7 @@ def get_holidays_keyboard():
     return k
 
 def get_holiday_confirm_keyboard():
-    k = VkKeyboard(one_time=True)
+    k = VkKeyboard(inline=True)
     k.add_button("✅ Опубликовать (праздник)", VkKeyboardColor.POSITIVE)
     k.add_line()
     k.add_button("✏️ Написать свой текст", VkKeyboardColor.PRIMARY)

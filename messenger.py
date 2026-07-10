@@ -4,7 +4,7 @@ import logging
 import vk_api
 import requests as req
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
-from datetime import datetime
+from datetime import datetime, timedelta
 from config import *
 from utils import *
 from keyboards import *
@@ -56,13 +56,7 @@ def run_messenger():
                 try:
                     msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
                     if msg_data and msg_data.get("items"):
-                        for att in msg_data["items"][0].get("attachments", []):
-                            att_type = att.get("type")
-                            att_obj = att.get(att_type, {})
-                            oid = att_obj.get("owner_id")
-                            iid = att_obj.get("id")
-                            if oid and iid:
-                                attachments += f"{att_type}{oid}_{iid},"
+                        attachments = build_attachments(msg_data["items"][0]) or ""
                 except:
                     pass
 
@@ -70,7 +64,7 @@ def run_messenger():
                     "post_id": message_id,
                     "from_id": user_id,
                     "text": text,
-                    "attachments": attachments.rstrip(','),
+                    "attachments": attachments,
                     "time": int(datetime.now().timestamp())
                 }
                 admin_state.pop(user_id, None)
@@ -117,94 +111,18 @@ def run_messenger():
                 elif t == "➡️ вперёд": idx = (idx + 1) % len(ids)
 
                 elif t == "✅ опубликовать":
-                    draft_id = ids[idx]; d = pending[draft_id]
-                    attachments = []
-                    
-                    if d.get('images'):
-                        send_message(vk, user_id, "⏳ Загружаю фото...")
-                        from reddit_handler import upload_photos_to_vk
-                        attachments, _ = upload_photos_to_vk(d.get('images', [])[:10])
-
-                    post_text = d.get('text', '')
-                    if d.get('title') and not post_text: post_text = d['title']
-                    elif d.get('title'): post_text = f"{d['title']}\n\n{post_text}"
-                    if not post_text and attachments: post_text = d.get('title', '')
-
-                    pub_time = get_next_free_hour()
-                    posted = False
-                    for attempt in range(24):
-                        try:
-                            vk.wall.post(
-                                owner_id=-GROUP_ID,
-                                message=post_text[:4000] if post_text else "",
-                                attachments=",".join(attachments) if attachments else None,
-                                from_group=1,
-                                publish_date=pub_time
-                            )
-                            posted = True
-                            break
-                        except Exception as e:
-                            if "214" in str(e) or "already scheduled" in str(e):
-                                pub_time += 3600
-                                logging.info(f"⏰ Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
-                            else:
-                                logging.error(f"❌ Ошибка публикации: {e}")
-                                break
-
-                    if posted:
-                        add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото", 0)
-                        del drafts[draft_id]; save_drafts(drafts)
-                        total_images = len(d.get('images', []))
-                        msg = f"✅ В очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}!"
-                        if attachments: msg += f" 📸 {len(attachments)}/{total_images} фото"
-                        admin_state.pop(user_id, None)
-                        send_message(vk, user_id, msg, get_admin_main_keyboard())
-                    else:
-                        send_message(vk, user_id, "❌ Ошибка публикации.", get_admin_main_keyboard())
-                        admin_state.pop(user_id, None)
+                    draft_id = ids[idx]
+                    admin_state[user_id] = {"mode": "reddit_pick_date", "draft_id": draft_id, "photo_only": False}
+                    send_message(vk, user_id, "📅 Выбери дату публикации:", get_reddit_date_keyboard())
                     continue
 
                 elif t == "📷 только фото":
                     draft_id = ids[idx]; d = pending[draft_id]
-                    
                     if not d.get('images'):
                         send_message(vk, user_id, "❌ Нет фото в этом посте.")
                         continue
-                    
-                    send_message(vk, user_id, "⏳ Загружаю фото...")
-                    from reddit_handler import upload_photos_to_vk
-                    attachments, _ = upload_photos_to_vk(d.get('images', [])[:10])
-                    
-                    if not attachments:
-                        send_message(vk, user_id, "❌ Не удалось загрузить фото.")
-                        continue
-
-                    pub_time = get_next_free_hour()
-                    posted = False
-                    for attempt in range(24):
-                        try:
-                            vk.wall.post(
-                                owner_id=-GROUP_ID,
-                                attachments=",".join(attachments),
-                                from_group=1,
-                                publish_date=pub_time
-                            )
-                            posted = True
-                            break
-                        except Exception as e:
-                            if "214" in str(e) or "already scheduled" in str(e):
-                                pub_time += 3600
-                            else:
-                                break
-                    if posted:
-                        add_scheduled_post(pub_time, "Фото из Reddit", 0)
-                        del drafts[draft_id]; save_drafts(drafts)
-                        total_images = len(d.get('images', []))
-                        msg = f"✅ Фото в очереди на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}! 📸 {len(attachments)}/{total_images} фото"
-                        admin_state.pop(user_id, None)
-                        send_message(vk, user_id, msg, get_admin_main_keyboard())
-                    else:
-                        send_message(vk, user_id, "❌ Ошибка публикации.")
+                    admin_state[user_id] = {"mode": "reddit_pick_date", "draft_id": draft_id, "photo_only": True}
+                    send_message(vk, user_id, "📅 Выбери дату публикации:", get_reddit_date_keyboard())
                     continue
 
                 elif "перевести" in t:
@@ -311,6 +229,68 @@ def run_messenger():
                 if d.get('url'): msg += f"🔗 {d['url']}"
                 admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
                 send_message(vk, user_id, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
+                continue
+
+            # Reddit: выбор даты публикации
+            if mode == "reddit_pick_date":
+                if t in ["🔙 в админку", "❌ отмена", "🔙 отмена"]:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
+                    continue
+                m = re.search(r'(\d{2})\.(\d{2})', text)
+                if not m:
+                    send_message(vk, user_id, "📅 Выбери дату кнопкой:", get_reddit_date_keyboard())
+                    continue
+                day, month = int(m.group(1)), int(m.group(2))
+                base = datetime.now()
+                chosen = None
+                for i in range(0, 14):
+                    cand = base + timedelta(days=i)
+                    if cand.day == day and cand.month == month:
+                        chosen = cand
+                        break
+                if not chosen:
+                    send_message(vk, user_id, "📅 Не понял дату, выбери кнопкой:", get_reddit_date_keyboard())
+                    continue
+                date_str = chosen.strftime("%Y-%m-%d")
+                busy = [datetime.fromtimestamp(p["time"]).hour
+                        for p in get_scheduled_posts()
+                        if datetime.fromtimestamp(p["time"]).strftime("%Y-%m-%d") == date_str
+                        and datetime.fromtimestamp(p["time"]).minute == 0]
+                state["mode"] = "reddit_pick_hour"
+                state["date"] = date_str
+                admin_state[user_id] = state
+                send_message(vk, user_id,
+                             f"🕒 Выбери час на {chosen.strftime('%d.%m')} (красным — занято):",
+                             get_reddit_hour_keyboard(busy))
+                continue
+
+            # Reddit: выбор часа публикации
+            if mode == "reddit_pick_hour":
+                if t in ["🔙 в админку", "❌ отмена", "🔙 отмена"]:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
+                    continue
+                m = re.match(r'^\s*(\d{1,2}):00\s*$', text)
+                if not m:
+                    send_message(vk, user_id, "🕒 Выбери час кнопкой:",
+                                 get_reddit_hour_keyboard([]))
+                    continue
+                hour = int(m.group(1))
+                date_str = state.get("date")
+                try:
+                    base_dt = datetime.strptime(f"{date_str} {hour:02d}:00", "%Y-%m-%d %H:%M")
+                except Exception:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "❌ Ошибка даты.", get_admin_main_keyboard())
+                    continue
+                pub_time = int(base_dt.timestamp())
+                if pub_time <= int(time.time()) + 60:
+                    send_message(vk, user_id, "⏰ Это время уже прошло, выбери другой час.",
+                                 get_reddit_hour_keyboard([]))
+                    continue
+                publish_reddit_draft(vk, user_id, state["draft_id"], pub_time, state.get("photo_only", False))
+                admin_state.pop(user_id, None)
                 continue
 
             # AI-постер
@@ -838,6 +818,70 @@ def run_messenger():
             send_message(vk, user_id, "Нажмите кнопку.", get_main_keyboard())
 
 
+def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
+    """Ставит Reddit-черновик в отложенные на выбранное время.
+
+    При занятом времени (code 214) сдвигает на час вперёд.
+    """
+    from reddit_handler import load_drafts, save_drafts, upload_photos_to_vk
+    drafts = load_drafts()
+    d = drafts.get(draft_id)
+    if not d:
+        send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
+        return
+
+    attachments = []
+    if d.get("images"):
+        send_message(vk, user_id, "⏳ Загружаю фото...")
+        attachments, _ = upload_photos_to_vk(d.get("images", [])[:10])
+
+    if photo_only:
+        if not attachments:
+            send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_admin_main_keyboard())
+            return
+        post_text = ""
+    else:
+        post_text = d.get("text", "")
+        if d.get("title") and not post_text:
+            post_text = d["title"]
+        elif d.get("title"):
+            post_text = f"{d['title']}\n\n{post_text}"
+        if not post_text and attachments:
+            post_text = d.get("title", "")
+
+    posted = False
+    for _ in range(48):
+        try:
+            vk.wall.post(
+                owner_id=-GROUP_ID,
+                message=post_text[:4000] if post_text else "",
+                attachments=",".join(attachments) if attachments else None,
+                from_group=1,
+                publish_date=pub_time,
+            )
+            posted = True
+            break
+        except Exception as e:
+            if "214" in str(e) or "already scheduled" in str(e).lower():
+                pub_time += 3600
+                logging.info(f"⏰ Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
+            else:
+                logging.error(f"❌ Ошибка публикации Reddit: {e}")
+                break
+
+    if posted:
+        add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото из Reddit", 0)
+        del drafts[draft_id]; save_drafts(drafts)
+        when = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
+        total_images = len(d.get("images", []))
+        msg = f"✅ Запланировано на {when}!"
+        if attachments:
+            msg += f" 📸 {len(attachments)}/{total_images} фото"
+        send_message(vk, user_id, msg, get_admin_main_keyboard())
+    else:
+        send_message(vk, user_id, "❌ Ошибка публикации.", get_admin_main_keyboard())
+
+
 def schedule_user_post(vk, post_data):
     """Ставит присланный в ЛС пост в отложенные записи группы.
 
@@ -860,53 +904,15 @@ def schedule_user_post(vk, post_data):
         except:
             final_text = f"{text}\n\nАвтор: id{from_id}"
 
-    # Перезагружаем фото в альбом группы
-    new_attachments = []
-    if attachments:
-        for att in attachments.split(','):
-            att = att.strip()
-            if not att:
-                continue
-            if att.startswith('photo-'):
-                new_attachments.append(att)
-                continue
-            try:
-                parts = att[5:].split('_')
-                owner_id = int(parts[0])
-                photo_id = int(parts[1])
-                
-                msg_data = vk.messages.getById(message_ids=post_id, group_id=GROUP_ID)
-                if msg_data and msg_data.get("items"):
-                    for item in msg_data["items"]:
-                        for a in item.get("attachments", []):
-                            if a.get("type") == "photo":
-                                p = a.get("photo", {})
-                                sizes = p.get("sizes", [])
-                                if sizes:
-                                    biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                                    url = biggest.get("url")
-                                    if url:
-                                        logging.info(f"📷 Скачиваю фото: {url[:80]}")
-                                        img = req.get(url, timeout=15).content
-                                        up = vk.photos.getWallUploadServer(group_id=GROUP_ID)
-                                        up_resp = req.post(up['upload_url'], files={'photo': ('p.jpg', img, 'image/jpeg')}).json()
-                                        if 'photo' in up_resp:
-                                            saved = vk.photos.saveWallPhoto(photo=up_resp['photo'], server=up_resp['server'], hash=up_resp['hash'], group_id=GROUP_ID)
-                                            if saved:
-                                                new_id = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
-                                                new_attachments.append(new_id)
-                                                logging.info(f"📷 Перезагружено: {att} → {new_id}")
-            except Exception as e:
-                logging.error(f"📷 Ошибка фото {att}: {e}")
-
+    # Вложения (фото/видео/док) прикрепляем напрямую по access_key — скачивать не нужно.
     slot = get_next_schedule_time(PUBLISH_INTERVAL)
     kwargs = {
         "owner_id": -GROUP_ID,
         "message": final_text,
         "from_group": 1,
     }
-    if new_attachments:
-        kwargs["attachments"] = ",".join(new_attachments)
+    if attachments:
+        kwargs["attachments"] = attachments
 
     logging.info(f"===== WALL.POST (отложено) =====")
     logging.info(f"message_len={len(kwargs['message'])}, attachments={kwargs.get('attachments', 'нет')}")
