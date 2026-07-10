@@ -56,28 +56,53 @@ def show_reddit_draft(vk, user_id, drafts, ids, idx):
 
 
 def upload_photo_from_message(vk, user_id, message_id):
-    """Загружает фото из сообщения на стену группы. Возвращает attachment-строку или None."""
+    """Загружает фото из сообщения на стену группы через прямые HTTP-запросы."""
     try:
         msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
         if msg_data and msg_data.get("items"):
             for att in msg_data["items"][0].get("attachments", []):
                 if att.get("type") == "photo":
-                    att_obj = att.get("photo", {})
-                    sizes = att_obj.get("sizes", [])
+                    sizes = att["photo"].get("sizes", [])
                     if sizes:
                         biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                        if biggest.get("url"):
-                            img_data = req.get(biggest["url"]).content
-                            up_server = vk.photos.getWallUploadServer(group_id=GROUP_ID)
-                            up = req.post(up_server['upload_url'],
+                        url = biggest.get("url")
+                        if url:
+                            img_data = req.get(url, timeout=30).content
+
+                            # Прямой HTTP-запрос
+                            upload_server = req.get(
+                                "https://api.vk.com/method/photos.getWallUploadServer",
+                                params={
+                                    "group_id": GROUP_ID,
+                                    "access_token": GROUP_TOKEN,
+                                    "v": "5.131"
+                                }
+                            ).json()
+
+                            if "response" not in upload_server:
+                                logging.error(f"getWallUploadServer failed: {upload_server}")
+                                return None
+
+                            upload_url = upload_server["response"]["upload_url"]
+                            up = req.post(upload_url,
                                           files={'photo': ('img.jpg', img_data, 'image/jpeg')}).json()
-                            if 'photo' in up and up['photo']:
-                                saved = vk.photos.saveWallPhoto(
-                                    photo=up['photo'], server=up['server'],
-                                    hash=up['hash'], group_id=GROUP_ID
-                                )
-                                if saved:
-                                    return f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
+
+                            if 'photo' in up:
+                                save_resp = req.get(
+                                    "https://api.vk.com/method/photos.saveWallPhoto",
+                                    params={
+                                        "group_id": GROUP_ID,
+                                        "photo": up["photo"],
+                                        "server": up["server"],
+                                        "hash": up["hash"],
+                                        "access_token": GROUP_TOKEN,
+                                        "v": "5.131"
+                                    }
+                                ).json()
+
+                                if "response" in save_resp and save_resp["response"]:
+                                    saved = save_resp["response"][0]
+                                    return f"photo{saved['owner_id']}_{saved['id']}"
     except Exception as e:
         logging.error(f"Ошибка загрузки фото: {e}")
     return None
@@ -941,7 +966,7 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
 
 def schedule_user_post(vk, post_data):
     """Ставит присланный в ЛС пост в отложенные записи группы.
-    Фото перезагружаются на стену группы через messages.getById."""
+    Фото перезагружаются на стену группы через прямые HTTP-запросы к VK API."""
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
@@ -963,17 +988,42 @@ def schedule_user_post(vk, post_data):
                             url = biggest.get("url")
                             if url:
                                 logging.info(f"📎 Скачиваю фото: {url[:80]}...")
+                                
+                                # Прямой HTTP-запрос к VK API
+                                upload_server = req.get(
+                                    "https://api.vk.com/method/photos.getWallUploadServer",
+                                    params={
+                                        "group_id": GROUP_ID,
+                                        "access_token": GROUP_TOKEN,
+                                        "v": "5.131"
+                                    }
+                                ).json()
+                                
+                                if "response" not in upload_server:
+                                    logging.error(f"❌ getWallUploadServer failed: {upload_server}")
+                                    continue
+                                
+                                upload_url = upload_server["response"]["upload_url"]
                                 img_data = req.get(url, timeout=30).content
-                                up_server = vk.photos.getWallUploadServer(group_id=GROUP_ID)
-                                up = req.post(up_server['upload_url'],
+                                up = req.post(upload_url,
                                               files={'photo': ('post.jpg', img_data, 'image/jpeg')}).json()
-                                if 'photo' in up and up['photo']:
-                                    saved = vk.photos.saveWallPhoto(
-                                        photo=up['photo'], server=up['server'],
-                                        hash=up['hash'], group_id=GROUP_ID
-                                    )
-                                    if saved:
-                                        new_attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
+                                
+                                if 'photo' in up:
+                                    save_resp = req.get(
+                                        "https://api.vk.com/method/photos.saveWallPhoto",
+                                        params={
+                                            "group_id": GROUP_ID,
+                                            "photo": up["photo"],
+                                            "server": up["server"],
+                                            "hash": up["hash"],
+                                            "access_token": GROUP_TOKEN,
+                                            "v": "5.131"
+                                        }
+                                    ).json()
+                                    
+                                    if "response" in save_resp and save_resp["response"]:
+                                        saved = save_resp["response"][0]
+                                        new_attachments.append(f"photo{saved['owner_id']}_{saved['id']}")
                                         logging.info(f"✅ Фото перезагружено на стену группы")
         except Exception as e:
             logging.error(f"❌ Ошибка обработки фото: {e}")
