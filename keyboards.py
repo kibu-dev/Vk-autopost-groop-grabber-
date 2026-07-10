@@ -1,3 +1,5 @@
+# keyboards.py — полностью
+
 import json
 from datetime import datetime, timedelta
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
@@ -83,7 +85,6 @@ def get_reddit_date_keyboard():
             name = "Завтра"
         else:
             name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][day.weekday()]
-        date_str = day.strftime('%Y-%m-%d')
         k.add_button(f"📅 {name} {day.strftime('%d.%m')}", VkKeyboardColor.PRIMARY)
         if i % 2 == 1 and i != days - 1:
             k.add_line()
@@ -91,17 +92,34 @@ def get_reddit_date_keyboard():
     k.add_button("🔙 В админку", VkKeyboardColor.SECONDARY)
     return k
 
-def get_reddit_hour_keyboard(busy_hours):
-    """Инлайн-выбор часа. Занятые часы (**:00) — красным."""
+def get_reddit_range_keyboard():
+    """Выбор диапазона времени суток."""
+    k = VkKeyboard(inline=True, one_time=False)
+    k.add_button("🌅 Утро (8-12)", VkKeyboardColor.PRIMARY)
+    k.add_button("☀️ День (12-17)", VkKeyboardColor.PRIMARY)
+    k.add_line()
+    k.add_button("🌆 Вечер (17-21)", VkKeyboardColor.PRIMARY)
+    k.add_button("🌙 Ночь (21-8)", VkKeyboardColor.SECONDARY)
+    k.add_line()
+    k.add_button("🔙 В админку", VkKeyboardColor.SECONDARY)
+    return k
+
+def get_reddit_hour_keyboard(busy_hours, start_hour, end_hour):
+    """Сетка часов для выбранного диапазона. Занятые — красным."""
     k = VkKeyboard(inline=True, one_time=False)
     busy = set(busy_hours or [])
-    for h in range(24):
+    
+    added = 0
+    for h in range(start_hour, end_hour + 1):
         color = VkKeyboardColor.NEGATIVE if h in busy else VkKeyboardColor.SECONDARY
         hour_str = f"{h:02d}:00"
         k.add_button(hour_str, color)
-        if (h + 1) % 6 == 0 and h != 23:
+        added += 1
+        if added % 3 == 0 and h != end_hour:
             k.add_line()
+    
     k.add_line()
+    k.add_button("⬅️ К диапазонам", VkKeyboardColor.PRIMARY)
     k.add_button("🔙 В админку", VkKeyboardColor.SECONDARY)
     return k
 
