@@ -2,6 +2,8 @@ from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 def get_main_keyboard():
     k = VkKeyboard(one_time=False)
+    k.add_button("📝 Предложить пост", VkKeyboardColor.POSITIVE)
+    k.add_line()
     k.add_button("🗑 Удалить мой пост", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("🆘 Написать в поддержку", VkKeyboardColor.SECONDARY)
@@ -29,7 +31,6 @@ def get_cancel_keyboard():
 
 def get_admin_main_keyboard():
     k = VkKeyboard(one_time=False)
-    k.add_button("📢 Модерация", VkKeyboardColor.PRIMARY)
     k.add_button("📅 Очередь постов", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("👥 Группы-доноры", VkKeyboardColor.PRIMARY)
@@ -79,24 +80,6 @@ def get_forbidden_words_keyboard():
     k = VkKeyboard(one_time=False)
     k.add_button("➕ Добавить слово", VkKeyboardColor.POSITIVE)
     k.add_button("➖ Удалить слово", VkKeyboardColor.NEGATIVE)
-    k.add_line()
-    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
-    return k
-
-def get_moderation_keyboard(post_id):
-    k = VkKeyboard(one_time=True)
-    k.add_button(f"✅ Опубл {post_id}", VkKeyboardColor.POSITIVE)
-    k.add_line()
-    k.add_button(f"❌ Удалить {post_id}", VkKeyboardColor.NEGATIVE)
-    k.add_line()
-    k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
-    return k
-
-def get_pending_grab_keyboard(index):
-    k = VkKeyboard(one_time=True)
-    k.add_button(f"✅ Граббер {index}", VkKeyboardColor.POSITIVE)
-    k.add_line()
-    k.add_button(f"❌ Граббер {index}", VkKeyboardColor.NEGATIVE)
     k.add_line()
     k.add_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY)
     return k
@@ -152,15 +135,6 @@ def get_variants_keyboard():
     k.add_button("✏️ Свой текст", VkKeyboardColor.PRIMARY)
     k.add_line()
     k.add_button("🔄 Ещё вариант", VkKeyboardColor.SECONDARY)
-    k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
-    return k
-
-def get_attach_keyboard():
-    k = VkKeyboard(one_time=True)
-    k.add_button("📷 Да, прикрепить", VkKeyboardColor.POSITIVE)
-    k.add_line()
-    k.add_button("✅ Нет, опубликовать", VkKeyboardColor.POSITIVE)
-    k.add_line()
     k.add_button("❌ Отмена", VkKeyboardColor.NEGATIVE)
     return k
 
