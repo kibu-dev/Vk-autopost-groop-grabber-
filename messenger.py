@@ -43,11 +43,64 @@ def run_messenger():
 
         logging.info(f"MSG: '{text[:80]}' | ADMIN: {is_admin} | STATE: {admin_state.get(user_id, {}).get('mode', 'none')}")
 
-        # === РЕЖИМЫ АДМИНА ===
-        if is_admin and user_id in admin_state:
+        # === РЕЖИМЫ (АДМИН И ПОЛЬЗОВАТЕЛЬ) ===
+        if user_id in admin_state:
             state = admin_state[user_id]
             mode = state.get("mode")
             t = text.lower()
+
+            # === ПОЛЬЗОВАТЕЛЬ ПРИСЫЛАЕТ ПОСТ ===
+            if mode == "user_post":
+                if t in ["🔙 отмена", "❌ отмена"]:
+                    admin_state.pop(user_id, None)
+                    send_message(vk, user_id, "❌ Отменено.", get_main_keyboard())
+                    continue
+
+                attachments = ""
+                try:
+                    msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
+                    if msg_data and msg_data.get("items"):
+                        for att in msg_data["items"][0].get("attachments", []):
+                            att_type = att.get("type")
+                            att_obj = att.get(att_type, {})
+                            oid = att_obj.get("owner_id")
+                            iid = att_obj.get("id")
+                            if oid and iid:
+                                attachments += f"{att_type}{oid}_{iid},"
+                except:
+                    pass
+
+                post_data = {
+                    "post_id": int(datetime.now().timestamp()),
+                    "from_id": user_id,
+                    "text": text,
+                    "attachments": attachments.rstrip(','),
+                    "time": int(datetime.now().timestamp())
+                }
+                pending_posts.append(post_data)
+                logging.info(f"📨 Пост от пользователя {user_id} (очередь: {len(pending_posts)})")
+
+                if ADMIN_ID:
+                    try:
+                        author_name = get_user_name(vk, user_id)
+                        author_str = f"{author_name[0]} {author_name[1]}"
+                    except:
+                        author_str = f"id{user_id}"
+                    vk.messages.send(
+                        user_id=ADMIN_ID,
+                        message=f"📨 Новый пост от {author_str}!\n📝 {text[:200]}\n\nОчередь: {len(pending_posts)} постов",
+                        random_id=0,
+                        group_id=GROUP_ID
+                    )
+
+                admin_state.pop(user_id, None)
+                send_message(vk, user_id, "✅ Пост принят! Он появится на стене в ближайшее время.", get_main_keyboard())
+                publish_from_queue(vk)
+                continue
+
+            # === ТОЛЬКО АДМИН ДАЛЬШЕ ===
+            if not is_admin:
+                continue
 
             # === REDDIT NAVIGATION ===
             if mode == "reddit_view":
@@ -456,55 +509,6 @@ def run_messenger():
                 send_message(vk, user_id, f"📝 Ваш текст:\n\n{text[:500]}...", get_holiday_confirm_keyboard())
                 continue
 
-            # === ПОЛЬЗОВАТЕЛЬ ПРИСЫЛАЕТ ПОСТ ===
-            if mode == "user_post":
-                if t in ["🔙 отмена", "❌ отмена"]:
-                    admin_state.pop(user_id, None)
-                    send_message(vk, user_id, "❌ Отменено.", get_main_keyboard())
-                    continue
-
-                attachments = ""
-                try:
-                    msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
-                    if msg_data and msg_data.get("items"):
-                        for att in msg_data["items"][0].get("attachments", []):
-                            att_type = att.get("type")
-                            att_obj = att.get(att_type, {})
-                            oid = att_obj.get("owner_id")
-                            iid = att_obj.get("id")
-                            if oid and iid:
-                                attachments += f"{att_type}{oid}_{iid},"
-                except:
-                    pass
-
-                post_data = {
-                    "post_id": int(datetime.now().timestamp()),
-                    "from_id": user_id,
-                    "text": text,
-                    "attachments": attachments.rstrip(','),
-                    "time": int(datetime.now().timestamp())
-                }
-                pending_posts.append(post_data)
-                logging.info(f"📨 Пост от пользователя {user_id} (очередь: {len(pending_posts)})")
-
-                if ADMIN_ID:
-                    try:
-                        author_name = get_user_name(vk, user_id)
-                        author_str = f"{author_name[0]} {author_name[1]}"
-                    except:
-                        author_str = f"id{user_id}"
-                    vk.messages.send(
-                        user_id=ADMIN_ID,
-                        message=f"📨 Новый пост от {author_str}!\n📝 {text[:200]}\n\nОчередь: {len(pending_posts)} постов",
-                        random_id=0,
-                        group_id=GROUP_ID
-                    )
-
-                admin_state.pop(user_id, None)
-                send_message(vk, user_id, "✅ Пост принят! Он появится на стене в ближайшее время.", get_main_keyboard())
-                publish_from_queue(vk)
-                continue
-
             if t in ["🔙 отмена", "🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
                 send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
@@ -527,7 +531,7 @@ def run_messenger():
                     send_message(vk, user_id, "✅ Удалено!", get_forbidden_words_keyboard())
                 else:
                     send_message(vk, user_id, "❌ Не найдено.", get_forbidden_words_keyboard())
-            
+
             if mode in ["add_donor", "add_word", "del_word"]:
                 admin_state.pop(user_id, None)
                 continue
@@ -871,7 +875,9 @@ def publish_from_queue(vk):
         except:
             final_text = f"{text}\n\nАвтор: id{from_id}"
 
-    pub_time = get_next_free_hour()
+    pub_time = max(now, last_user_post_time) + PUBLISH_INTERVAL
+    pub_time = (pub_time // 900) * 900
+
     posted = False
     for attempt in range(24):
         try:
@@ -879,21 +885,27 @@ def publish_from_queue(vk):
                 "owner_id": -GROUP_ID,
                 "message": final_text,
                 "from_group": 1,
-                "publish_date": pub_time
+                "publish_date": int(pub_time)
             }
             if attachments:
                 kwargs["attachments"] = attachments
 
+            logging.info(f"===== WALL.POST =====")
+            logging.info(f"publish_date={kwargs['publish_date']} ({datetime.fromtimestamp(pub_time).strftime('%d.%m %H:%M')})")
+
             result = vk.wall.post(**kwargs)
             posted = True
             break
-        except Exception as e:
+        except vk_api.exceptions.ApiError as e:
+            logging.error(f"❌ VK API ошибка #{post_id}: code={e.code}, msg={e}")
             if "214" in str(e) or "already scheduled" in str(e):
-                pub_time += 3600
+                pub_time += 900
                 logging.info(f"⏰ Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
             else:
-                logging.error(f"❌ Ошибка планирования #{post_id}: {e}")
                 break
+        except Exception as e:
+            logging.error(f"❌ Ошибка планирования #{post_id}: {e}")
+            break
 
     if posted:
         add_scheduled_post(pub_time, text[:200], from_id)
