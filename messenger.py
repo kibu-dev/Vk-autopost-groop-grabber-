@@ -23,7 +23,7 @@ last_user_post_time = 0
 def run_messenger():
     global last_user_post_time
     
-    vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131")
+    vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.199")
     vk = vk_session.get_api()
     longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID, wait=25)
     logging.info("🤖 ЛС бот запущен")
