@@ -32,7 +32,7 @@ def load_horoscope_prompt():
     except:
         return "Напиши гороскоп на неделю для всех знаков зодиака."
 
-def create_horoscope():
+def create_horoscope(vk, vk_group):
     """Создаёт новый гороскоп. Возвращает True если успешно."""
     config = get_horoscope_config()
     
@@ -40,7 +40,7 @@ def create_horoscope():
     old_post_id = config.get("post_id")
     if old_post_id:
         try:
-            vk_user.wall.delete(owner_id=-GROUP_ID, post_id=old_post_id)
+            vk.wall.delete(owner_id=-GROUP_ID, post_id=old_post_id)
             logging.info(f"🔮 Удалён старый гороскоп #{old_post_id}")
         except:
             pass
@@ -60,7 +60,7 @@ def create_horoscope():
     
     for attempt in range(24):
         try:
-            result = vk_user.wall.post(
+            result = vk.wall.post(
                 owner_id=-GROUP_ID,
                 message=text,
                 attachments=photo_id if photo_id else None,
@@ -98,8 +98,7 @@ def create_horoscope():
     return True
 
 def run_weekly_horoscope():
-    global vk_user, vk_group
-    vk_user = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
+    vk = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
     vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
     
     logging.info("🔮 Гороскоп запущен")
@@ -133,7 +132,7 @@ def run_weekly_horoscope():
                     need_new = True
             
             if need_new:
-                create_horoscope()
+                create_horoscope(vk, vk_group)
             
             time.sleep(3600)
             
