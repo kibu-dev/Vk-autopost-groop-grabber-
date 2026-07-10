@@ -6,12 +6,12 @@ from config import *
 from utils import *
 
 def run_grabber():
-    vk = vk_api.VkApi(token=USER_TOKEN, api_version="5.131").get_api()
+    vk = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
     logging.info("🎣 Граббер запущен")
 
     donors = get_donor_groups()
     if donors:
-        logging.info("🔍 Первый запуск — запоминаю последние посты...")
+        logging.info("🔄 Первый запуск — запоминаю последние посты...")
         for group_id in donors:
             try:
                 posts = vk.wall.get(owner_id=-group_id, count=1, filter="owner")
@@ -27,7 +27,7 @@ def run_grabber():
         try:
             donors = get_donor_groups()
             if donors:
-                logging.info(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Сканирую...")
+                logging.info(f"🔄 [{datetime.now().strftime('%H:%M:%S')}] Сканирую...")
 
                 for group_id in donors:
                     try:
@@ -63,7 +63,7 @@ def run_grabber():
                                 publish_date=pub_time
                             )
                             add_scheduled_post(pub_time, text[:200], group_id)
-                            logging.info(f"  📅 Пост {pid} запланирован на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
+                            logging.info(f"  📮 Пост {pid} запланирован на {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
 
                             time.sleep(1)
 
