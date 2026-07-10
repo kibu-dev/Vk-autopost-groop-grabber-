@@ -4,6 +4,7 @@ import vk_api
 import time
 import os
 import threading
+import logging
 from datetime import datetime, timedelta
 
 # ─── Файлы ───
@@ -52,7 +53,7 @@ def save_json(filepath, data):
                 os.fsync(f.fileno())
             os.replace(tmp, filepath)
         except Exception as e:
-            print(f"Ошибка сохранения {filepath}: {e}")
+            logging.error(f"Ошибка сохранения {filepath}: {e}")
 
 # ─── Группы-доноры ───
 
@@ -120,11 +121,7 @@ def get_next_free_hour():
         hour += timedelta(hours=1)
 
 def get_next_schedule_time(interval):
-    """Ближайший свободный слот для отложенной записи с шагом `interval` секунд.
-
-    Первый пост уходит через `interval` от текущего момента, каждый следующий —
-    на `interval` позже предыдущего запланированного, чтобы держать интервал 15 минут.
-    """
+    """Ближайший свободный слот для отложенной записи с шагом `interval` секунд."""
     scheduled = load_json(SCHEDULED_FILE, {"posts": []})["posts"]
     now = int(time.time())
     ts = now + interval
@@ -377,15 +374,20 @@ def contains_anonymous(text):
     return any(kw in text.lower() for kw in ["анон", "анонимно", "аноним", "#анон", "#анонимно", "#аноним"])
 
 def build_attachments(post):
+    """Собирает строку вложений из объекта поста VK."""
     att = []
     for a in post.get("attachments", []):
-        t = a["type"]; obj = a[t]
-        oid = obj.get("owner_id"); iid = obj.get("id"); ak = obj.get("access_key", "")
+        t = a["type"]
+        obj = a.get(t, {})
+        oid = obj.get("owner_id")
+        iid = obj.get("id")
+        ak = obj.get("access_key", "")
         if oid and iid:
             s = f"{t}{oid}_{iid}"
-            if ak: s += f"_{ak}"
+            if ak:
+                s += f"_{ak}"
             att.append(s)
-    return ",".join(att) if att else None
+    return ",".join(att) if att else ""
 
 def resolve_group_id(vk, identifier):
     identifier = identifier.strip().rstrip('/')
@@ -407,11 +409,48 @@ def get_group_name(vk, group_id):
     try: return vk.groups.getById(group_id=group_id)[0]["name"]
     except: return f"Группа {group_id}"
 
+# ─── Отправка сообщений ───
+
+_last_bot_msg = {}  # user_id -> message_id
+
+def send_or_edit(vk, user_id, text, keyboard=None):
+    """Редактирует предыдущее сообщение бота, если возможно. Иначе — новое."""
+    if user_id in _last_bot_msg:
+        try:
+            vk.messages.edit(
+                peer_id=user_id,
+                conversation_message_id=_last_bot_msg[user_id],
+                message=text,
+                keyboard=keyboard.get_keyboard() if keyboard else None
+            )
+            return _last_bot_msg[user_id]
+        except Exception:
+            pass
+
+    resp = vk.messages.send(
+        user_id=user_id,
+        message=text,
+        random_id=0,
+        keyboard=keyboard.get_keyboard() if keyboard else None
+    )
+    _last_bot_msg[user_id] = resp
+    return resp
+
+
 def send_message(vk, user_id, text, keyboard=None):
+    """Всегда новое сообщение. Сбрасывает кеш для send_or_edit."""
+    _last_bot_msg.pop(user_id, None)
     try:
-        vk.messages.send(user_id=user_id, message=text, random_id=0,
-                         keyboard=keyboard.get_keyboard() if keyboard else None)
-    except Exception as e: print(f"Ошибка отправки: {e}")
+        resp = vk.messages.send(
+            user_id=user_id,
+            message=text,
+            random_id=0,
+            keyboard=keyboard.get_keyboard() if keyboard else None
+        )
+        return resp
+    except Exception as e:
+        logging.error(f"Ошибка отправки: {e}")
+        return None
 
 # ─── Модерация ───
 
@@ -456,8 +495,11 @@ def moderate_post(vk_user, post_id, uid, text, attachments_str, reason, post_typ
             try:
                 u = vk_user.users.get(user_ids=uid, fields="first_name,last_name")[0]
                 author = f"{u['first_name']} {u['last_name']}"
-            except: author = f"id{uid}"
+            except:
+                author = f"id{uid}"
             msg = f"🚨 ПОДОЗРИТЕЛЬНЫЙ ПОСТ ({reason})\n\nАвтор: {author}\n\nТекст:\n{text[:500]}\n\nID: {post_id}"
-            if attachments_str: msg += "\n📎 Есть вложения"
+            if attachments_str:
+                msg += "\n📎 Есть вложения"
             vk_group.messages.send(user_id=ADMIN_ID, message=msg, random_id=0, keyboard=kb.get_keyboard(), group_id=GROUP_ID)
-        except Exception as e: print(f"Ошибка уведомления: {e}")
+        except Exception as e:
+            logging.error(f"Ошибка уведомления модерации: {e}")
