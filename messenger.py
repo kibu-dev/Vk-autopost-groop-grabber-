@@ -17,12 +17,8 @@ from holidays import (
 waiting_support = set()
 selected_post = {}
 admin_state = {}
-pending_posts = []
-last_user_post_time = 0
 
 def run_messenger():
-    global last_user_post_time
-
     vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131")
     vk = vk_session.get_api()
     longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID, wait=25)
@@ -77,25 +73,26 @@ def run_messenger():
                     "attachments": attachments.rstrip(','),
                     "time": int(datetime.now().timestamp())
                 }
-                pending_posts.append(post_data)
-                logging.info(f"📨 Пост от пользователя {user_id} (очередь: {len(pending_posts)})")
-
-                if ADMIN_ID:
-                    try:
-                        author_name = get_user_name(vk, user_id)
-                        author_str = f"{author_name[0]} {author_name[1]}"
-                    except:
-                        author_str = f"id{user_id}"
-                    vk.messages.send(
-                        user_id=ADMIN_ID,
-                        message=f"📨 Новый пост от {author_str}!\n📝 {text[:200]}\n\nОчередь: {len(pending_posts)} постов",
-                        random_id=0,
-                        group_id=GROUP_ID
-                    )
-
                 admin_state.pop(user_id, None)
-                send_message(vk, user_id, "✅ Пост принят! Он появится на стене в ближайшее время.", get_main_keyboard())
-                publish_from_queue(vk)
+
+                slot = schedule_user_post(vk, post_data)
+                if slot:
+                    when = datetime.fromtimestamp(slot).strftime("%H:%M")
+                    send_message(vk, user_id, f"✅ Пост принят! Он выйдет из отложенных в {when}.", get_main_keyboard())
+                    if ADMIN_ID:
+                        try:
+                            author_name = get_user_name(vk, user_id)
+                            author_str = f"{author_name[0]} {author_name[1]}"
+                        except:
+                            author_str = f"id{user_id}"
+                        vk.messages.send(
+                            user_id=ADMIN_ID,
+                            message=f"📨 Новый пост от {author_str}!\n📝 {text[:200]}\n\n🕒 Отложен на {when}",
+                            random_id=0,
+                            group_id=GROUP_ID
+                        )
+                else:
+                    send_message(vk, user_id, "❌ Не удалось запланировать пост, попробуй позже.", get_main_keyboard())
                 continue
 
             # === ТОЛЬКО АДМИН ДАЛЬШЕ ===
@@ -840,25 +837,13 @@ def run_messenger():
         else:
             send_message(vk, user_id, "Нажмите кнопку.", get_main_keyboard())
 
-        # === ПЕРИОДИЧЕСКАЯ ПУБЛИКАЦИЯ ИЗ ОЧЕРЕДИ ===
-        try:
-            now = time.time()
-            if now - last_user_post_time >= PUBLISH_INTERVAL and pending_posts:
-                publish_from_queue(vk)
-        except:
-            pass
 
+def schedule_user_post(vk, post_data):
+    """Ставит присланный в ЛС пост в отложенные записи группы.
 
-def publish_from_queue(vk):
-    global pending_posts, last_user_post_time
-    if not pending_posts:
-        return
-
-    now = time.time()
-    if now - last_user_post_time < PUBLISH_INTERVAL:
-        return
-
-    post_data = pending_posts.pop(0)
+    Возвращает время публикации (timestamp) или None при ошибке.
+    Слоты идут с шагом PUBLISH_INTERVAL (15 минут).
+    """
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
@@ -914,36 +899,35 @@ def publish_from_queue(vk):
             except Exception as e:
                 logging.error(f"📷 Ошибка фото {att}: {e}")
 
-    try:
-        kwargs = {
-            "owner_id": -GROUP_ID,
-            "message": final_text,
-            "from_group": 1
-        }
-        if new_attachments:
-            kwargs["attachments"] = ",".join(new_attachments)
+    slot = get_next_schedule_time(PUBLISH_INTERVAL)
+    kwargs = {
+        "owner_id": -GROUP_ID,
+        "message": final_text,
+        "from_group": 1,
+    }
+    if new_attachments:
+        kwargs["attachments"] = ",".join(new_attachments)
 
-        logging.info(f"===== WALL.POST =====")
-        logging.info(f"message_len={len(kwargs['message'])}, attachments={kwargs.get('attachments', 'нет')}")
+    logging.info(f"===== WALL.POST (отложено) =====")
+    logging.info(f"message_len={len(kwargs['message'])}, attachments={kwargs.get('attachments', 'нет')}")
 
-        result = vk.wall.post(**kwargs)
-        add_published_post(post_id, from_id, text)
-        last_user_post_time = time.time()
-        logging.info(f"✅ Пост #{post_id} опубликован от {from_id}")
+    for _ in range(96):
+        try:
+            kwargs["publish_date"] = slot
+            vk.wall.post(**kwargs)
+            add_scheduled_post(slot, final_text[:200], from_id)
+            when = datetime.fromtimestamp(slot).strftime("%H:%M")
+            logging.info(f"✅ Пост #{post_id} отложен на {when} (от {from_id})")
+            return slot
+        except vk_api.exceptions.ApiError as e:
+            if e.code == 214 or "already scheduled" in str(e).lower():
+                slot += PUBLISH_INTERVAL
+                continue
+            logging.error(f"❌ VK API ошибка #{post_id}: code={e.code}, msg={e}")
+            return None
+        except Exception as e:
+            logging.error(f"❌ Ошибка публикации #{post_id}: {e}")
+            return None
 
-        if from_id:
-            try:
-                vk.messages.send(
-                    user_id=from_id,
-                    message="✅ Твой пост опубликован на стене!",
-                    random_id=0,
-                    group_id=GROUP_ID
-                )
-            except:
-                pass
-    except vk_api.exceptions.ApiError as e:
-        logging.error(f"❌ VK API ошибка #{post_id}: code={e.code}, msg={e}")
-        pending_posts.insert(0, post_data)
-    except Exception as e:
-        logging.error(f"❌ Ошибка публикации #{post_id}: {e}")
-        pending_posts.insert(0, post_data)
+    logging.error(f"❌ Не удалось найти свободный слот для #{post_id}")
+    return None

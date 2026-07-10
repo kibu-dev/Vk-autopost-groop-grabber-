@@ -119,6 +119,24 @@ def get_next_free_hour():
             return ts
         hour += timedelta(hours=1)
 
+def get_next_schedule_time(interval):
+    """Ближайший свободный слот для отложенной записи с шагом `interval` секунд.
+
+    Первый пост уходит через `interval` от текущего момента, каждый следующий —
+    на `interval` позже предыдущего запланированного, чтобы держать интервал 15 минут.
+    """
+    scheduled = load_json(SCHEDULED_FILE, {"posts": []})["posts"]
+    now = int(time.time())
+    ts = now + interval
+    if scheduled:
+        last = max(p["time"] for p in scheduled)
+        if last + interval > ts:
+            ts = last + interval
+    taken = {p["time"] for p in scheduled}
+    while ts in taken:
+        ts += interval
+    return ts
+
 def add_scheduled_post(publish_date, text, from_group):
     data = load_json(SCHEDULED_FILE, {"posts": []})
     data["posts"].append({
