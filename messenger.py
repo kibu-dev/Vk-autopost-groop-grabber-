@@ -71,7 +71,7 @@ def run_messenger():
                     pass
 
                 post_data = {
-                    "post_id": int(datetime.now().timestamp()),
+                    "post_id": message_id,
                     "from_id": user_id,
                     "text": text,
                     "attachments": attachments.rstrip(','),
@@ -864,7 +864,7 @@ def publish_from_queue(vk):
     text = post_data["text"]
     attachments = post_data["attachments"]
 
-    logging.info(f"📨 Планирование поста #{post_id}: текст={text[:50] if text else 'нет'}")
+    logging.info(f"📨 Публикация поста #{post_id}: текст={text[:50] if text else 'нет'}, вложения={attachments[:100] if attachments else 'нет'}")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
@@ -875,54 +875,75 @@ def publish_from_queue(vk):
         except:
             final_text = f"{text}\n\nАвтор: id{from_id}"
 
-    pub_time = max(now, last_user_post_time) + PUBLISH_INTERVAL
-    pub_time = (pub_time // 900) * 900
+    # Перезагружаем фото в альбом группы
+    new_attachments = []
+    if attachments:
+        for att in attachments.split(','):
+            att = att.strip()
+            if not att:
+                continue
+            if att.startswith('photo-'):
+                new_attachments.append(att)
+                continue
+            try:
+                parts = att[5:].split('_')
+                owner_id = int(parts[0])
+                photo_id = int(parts[1])
+                
+                msg_data = vk.messages.getById(message_ids=post_id, group_id=GROUP_ID)
+                if msg_data and msg_data.get("items"):
+                    for item in msg_data["items"]:
+                        for a in item.get("attachments", []):
+                            if a.get("type") == "photo":
+                                p = a.get("photo", {})
+                                sizes = p.get("sizes", [])
+                                if sizes:
+                                    biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                                    url = biggest.get("url")
+                                    if url:
+                                        logging.info(f"📷 Скачиваю фото: {url[:80]}")
+                                        img = req.get(url, timeout=15).content
+                                        up = vk.photos.getWallUploadServer(group_id=GROUP_ID)
+                                        up_resp = req.post(up['upload_url'], files={'photo': ('p.jpg', img, 'image/jpeg')}).json()
+                                        if 'photo' in up_resp:
+                                            saved = vk.photos.saveWallPhoto(photo=up_resp['photo'], server=up_resp['server'], hash=up_resp['hash'], group_id=GROUP_ID)
+                                            if saved:
+                                                new_id = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
+                                                new_attachments.append(new_id)
+                                                logging.info(f"📷 Перезагружено: {att} → {new_id}")
+            except Exception as e:
+                logging.error(f"📷 Ошибка фото {att}: {e}")
 
-    posted = False
-    for attempt in range(24):
-        try:
-            kwargs = {
-                "owner_id": -GROUP_ID,
-                "message": final_text,
-                "from_group": 1,
-                "publish_date": int(pub_time)
-            }
-            if attachments:
-                kwargs["attachments"] = attachments
+    try:
+        kwargs = {
+            "owner_id": -GROUP_ID,
+            "message": final_text,
+            "from_group": 1
+        }
+        if new_attachments:
+            kwargs["attachments"] = ",".join(new_attachments)
 
-            logging.info(f"===== WALL.POST =====")
-            logging.info(f"publish_date={kwargs['publish_date']} ({datetime.fromtimestamp(pub_time).strftime('%d.%m %H:%M')})")
+        logging.info(f"===== WALL.POST =====")
+        logging.info(f"message_len={len(kwargs['message'])}, attachments={kwargs.get('attachments', 'нет')}")
 
-            result = vk.wall.post(**kwargs)
-            posted = True
-            break
-        except vk_api.exceptions.ApiError as e:
-            logging.error(f"❌ VK API ошибка #{post_id}: code={e.code}, msg={e}")
-            if "214" in str(e) or "already scheduled" in str(e):
-                pub_time += 900
-                logging.info(f"⏰ Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
-            else:
-                break
-        except Exception as e:
-            logging.error(f"❌ Ошибка планирования #{post_id}: {e}")
-            break
-
-    if posted:
-        add_scheduled_post(pub_time, text[:200], from_id)
+        result = vk.wall.post(**kwargs)
         add_published_post(post_id, from_id, text)
         last_user_post_time = time.time()
-        pub_str = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
-        logging.info(f"✅ Пост #{post_id} запланирован на {pub_str} от {from_id}")
+        logging.info(f"✅ Пост #{post_id} опубликован от {from_id}")
 
         if from_id:
             try:
                 vk.messages.send(
                     user_id=from_id,
-                    message=f"✅ Твой пост запланирован на {pub_str} МСК и появится на стене.",
+                    message="✅ Твой пост опубликован на стене!",
                     random_id=0,
                     group_id=GROUP_ID
                 )
             except:
                 pass
-    else:
-        logging.error(f"❌ Не удалось запланировать пост #{post_id}")
+    except vk_api.exceptions.ApiError as e:
+        logging.error(f"❌ VK API ошибка #{post_id}: code={e.code}, msg={e}")
+        pending_posts.insert(0, post_data)
+    except Exception as e:
+        logging.error(f"❌ Ошибка публикации #{post_id}: {e}")
+        pending_posts.insert(0, post_data)
