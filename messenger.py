@@ -614,7 +614,7 @@ def run_messenger():
             selected_post.pop(user_id, None)
             send_message(vk, user_id, "Отменено.", get_main_keyboard())
 
-        elif t == "✅ да, уда��ить" and user_id in selected_post:
+        elif t == "✅ да, удалить" and user_id in selected_post:
             pid = selected_post[user_id]
             if get_post_author(pid) == user_id:
                 try:
@@ -658,7 +658,7 @@ def run_messenger():
                     send_message(vk, user_id, "Группы-доноры:\n" + "\n".join([f"• {g} — {get_group_name(vk, g)}" for g in donors]), get_donor_groups_keyboard())
                 else:
                     send_message(vk, user_id, "📭 Список пуст.", get_donor_groups_keyboard())
-            elif t == "�� запрет-слова":
+            elif t == "🚫 запрет-слова":
                 words = get_forbidden_words()
                 if words:
                     send_message(vk, user_id, "Запрет-слова:\n📋 " + ", ".join(words), get_forbidden_words_keyboard())
