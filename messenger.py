@@ -56,13 +56,7 @@ def run_messenger():
                 try:
                     msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
                     if msg_data and msg_data.get("items"):
-                        for att in msg_data["items"][0].get("attachments", []):
-                            att_type = att.get("type")
-                            att_obj = att.get(att_type, {})
-                            oid = att_obj.get("owner_id")
-                            iid = att_obj.get("id")
-                            if oid and iid:
-                                attachments += f"{att_type}{oid}_{iid},"
+                        attachments = build_attachments(msg_data["items"][0]) or ""
                 except:
                     pass
 
@@ -70,7 +64,7 @@ def run_messenger():
                     "post_id": message_id,
                     "from_id": user_id,
                     "text": text,
-                    "attachments": attachments.rstrip(','),
+                    "attachments": attachments,
                     "time": int(datetime.now().timestamp())
                 }
                 admin_state.pop(user_id, None)
@@ -860,53 +854,15 @@ def schedule_user_post(vk, post_data):
         except:
             final_text = f"{text}\n\nАвтор: id{from_id}"
 
-    # Перезагружаем фото в альбом группы
-    new_attachments = []
-    if attachments:
-        for att in attachments.split(','):
-            att = att.strip()
-            if not att:
-                continue
-            if att.startswith('photo-'):
-                new_attachments.append(att)
-                continue
-            try:
-                parts = att[5:].split('_')
-                owner_id = int(parts[0])
-                photo_id = int(parts[1])
-                
-                msg_data = vk.messages.getById(message_ids=post_id, group_id=GROUP_ID)
-                if msg_data and msg_data.get("items"):
-                    for item in msg_data["items"]:
-                        for a in item.get("attachments", []):
-                            if a.get("type") == "photo":
-                                p = a.get("photo", {})
-                                sizes = p.get("sizes", [])
-                                if sizes:
-                                    biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                                    url = biggest.get("url")
-                                    if url:
-                                        logging.info(f"📷 Скачиваю фото: {url[:80]}")
-                                        img = req.get(url, timeout=15).content
-                                        up = vk.photos.getWallUploadServer(group_id=GROUP_ID)
-                                        up_resp = req.post(up['upload_url'], files={'photo': ('p.jpg', img, 'image/jpeg')}).json()
-                                        if 'photo' in up_resp:
-                                            saved = vk.photos.saveWallPhoto(photo=up_resp['photo'], server=up_resp['server'], hash=up_resp['hash'], group_id=GROUP_ID)
-                                            if saved:
-                                                new_id = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
-                                                new_attachments.append(new_id)
-                                                logging.info(f"📷 Перезагружено: {att} → {new_id}")
-            except Exception as e:
-                logging.error(f"📷 Ошибка фото {att}: {e}")
-
+    # Вложения (фото/видео/док) прикрепляем напрямую по access_key — скачивать не нужно.
     slot = get_next_schedule_time(PUBLISH_INTERVAL)
     kwargs = {
         "owner_id": -GROUP_ID,
         "message": final_text,
         "from_group": 1,
     }
-    if new_attachments:
-        kwargs["attachments"] = ",".join(new_attachments)
+    if attachments:
+        kwargs["attachments"] = attachments
 
     logging.info(f"===== WALL.POST (отложено) =====")
     logging.info(f"message_len={len(kwargs['message'])}, attachments={kwargs.get('attachments', 'нет')}")
