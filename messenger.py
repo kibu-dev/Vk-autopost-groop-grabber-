@@ -115,7 +115,6 @@ def run_messenger():
                     send_message(vk, user_id, "❌ Отменено.", get_main_keyboard())
                     continue
 
-                # Собираем вложения из сообщения пользователя
                 attachments = ""
                 try:
                     msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
@@ -217,7 +216,6 @@ def run_messenger():
                             drafts[draft_id]["translated"] = True
 
                     save_drafts(drafts)
-                    # Остаёмся на том же посте
                     show_reddit_draft(vk, user_id, drafts, ids, idx)
                     continue
 
@@ -231,7 +229,6 @@ def run_messenger():
                         if rewritten:
                             drafts[draft_id]["text"] = rewritten
                             save_drafts(drafts)
-                    # Остаёмся на том же посте
                     show_reddit_draft(vk, user_id, drafts, ids, idx)
                     continue
 
@@ -243,7 +240,6 @@ def run_messenger():
                 elif "удалить" in t:
                     del drafts[ids[idx]]
                     save_drafts(drafts)
-                    # Показываем следующий пост (или предыдущий, если удалили последний)
                     show_reddit_draft(vk, user_id, drafts, ids, idx)
                     continue
 
@@ -252,7 +248,6 @@ def run_messenger():
                     send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
                     continue
 
-                # Действие по умолчанию — показать текущий пост
                 show_reddit_draft(vk, user_id, drafts, ids, idx)
                 continue
 
@@ -428,11 +423,9 @@ def run_messenger():
                     if t != "-":
                         drafts[draft_id]["text"] = text
                     save_drafts(drafts)
-                    # После редактирования возвращаемся в просмотр Reddit
                     pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
                     ids = list(pending.keys())
                     if ids:
-                        # Ищем отредактированный пост в списке
                         try:
                             idx = ids.index(draft_id)
                         except ValueError:
@@ -558,7 +551,7 @@ def run_messenger():
                 send_message(vk, user_id, "Ты админ, можешь публиковать через AI-постер или Reddit.", get_admin_main_keyboard())
             else:
                 admin_state[user_id] = {"mode": "user_post"}
-                send_message(vk, user_id, "📝 Напиши текст поста (можно с фото/видео).\nДля анонимности добавь 'анон' в текст.", get_cancel_keyboard())
+                send_message(vk, user_id, "📝 Напиши текст поста (можно с фото).\nДля анонимности добавь 'анон' в текст.", get_cancel_keyboard())
 
         elif t == "🗑 удалить мой пост":
             posts = get_user_posts(user_id)
@@ -606,7 +599,7 @@ def run_messenger():
             if t in ["🔙 назад в админку", "🔙 назад"]:
                 admin_state.pop(user_id, None)
                 send_message(vk, user_id, "Админ-меню:", get_admin_main_keyboard())
-            elif t == "🔙 пользовательское меню":
+            elif t == "🔙 польз. меню":
                 send_message(vk, user_id, "Меню:", get_main_keyboard())
             elif t == "📅 очередь постов":
                 sched = get_scheduled_posts()
@@ -893,13 +886,58 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
 
 
 def schedule_user_post(vk, post_data):
-    """Ставит присланный в ЛС пост в отложенные записи группы."""
+    """Ставит присланный в ЛС пост в отложенные записи группы.
+    Фото перезагружаются на стену группы (из ЛС напрямую прикрепить нельзя)."""
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
-    attachments = post_data["attachments"]
+    attachments_str = post_data["attachments"]
 
-    logging.info(f"📨 Публикация поста #{post_id}: текст={text[:50] if text else 'нет'}, вложения={attachments[:100] if attachments else 'нет'}")
+    logging.info(f"📨 Публикация поста #{post_id}: текст={text[:50] if text else 'нет'}, вложения={attachments_str[:100] if attachments_str else 'нет'}")
+
+    new_attachments = []
+    if attachments_str:
+        for att in attachments_str.split(","):
+            att = att.strip()
+            if not att:
+                continue
+            if att.startswith("photo"):
+                try:
+                    parts = att[5:].split("_")
+                    owner_id = int(parts[0])
+                    photo_id = int(parts[1])
+                    access_key = parts[2] if len(parts) > 2 else None
+
+                    logging.info(f"📎 Перезагружаю фото owner_id={owner_id}, photo_id={photo_id}")
+
+                    if access_key:
+                        photo_info = vk.photos.getById(photos=f"{owner_id}_{photo_id}", access_key=access_key)
+                        if photo_info:
+                            sizes = photo_info[0].get("sizes", [])
+                            if sizes:
+                                biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                                url = biggest.get("url")
+                                if url:
+                                    img_data = req.get(url, timeout=30).content
+                                    up_server = vk.photos.getWallUploadServer(group_id=GROUP_ID)
+                                    up = req.post(up_server['upload_url'],
+                                                  files={'photo': ('post.jpg', img_data, 'image/jpeg')}).json()
+                                    if 'photo' in up and up['photo']:
+                                        saved = vk.photos.saveWallPhoto(
+                                            photo=up['photo'], server=up['server'],
+                                            hash=up['hash'], group_id=GROUP_ID
+                                        )
+                                        if saved:
+                                            new_attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
+                                            logging.info(f"✅ Фото перезагружено")
+                                            continue
+                    else:
+                        new_attachments.append(att)
+                        logging.info(f"✅ Фото на стене группы")
+                        continue
+
+                except Exception as e:
+                    logging.error(f"❌ Ошибка обработки фото: {e}")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
@@ -916,8 +954,8 @@ def schedule_user_post(vk, post_data):
         "message": final_text,
         "from_group": 1,
     }
-    if attachments:
-        kwargs["attachments"] = attachments
+    if new_attachments:
+        kwargs["attachments"] = ",".join(new_attachments)
 
     logging.info(f"===== WALL.POST (отложено) =====")
     logging.info(f"message_len={len(kwargs['message'])}, attachments={kwargs.get('attachments', 'нет')}")
