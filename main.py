@@ -8,6 +8,7 @@ from grabber import run_grabber
 from messenger import run_messenger
 from group_acceptor import run_group_acceptor
 from weekly_horoscope import run_weekly_horoscope
+from pub_users import run_pub_users
 
 def start_reddit():
     from reddit_handler import run_reddit_handler
@@ -34,6 +35,7 @@ if __name__ == "__main__":
     threading.Thread(target=run_grabber, daemon=True).start()
     threading.Thread(target=run_group_acceptor, daemon=True).start()
     threading.Thread(target=run_weekly_horoscope, daemon=True).start()
+    threading.Thread(target=run_pub_users, daemon=True).start()
 
     # Reddit handler в отдельном процессе
     multiprocessing.Process(target=start_reddit, daemon=True).start()
