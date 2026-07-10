@@ -873,8 +873,16 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
 
     attachments = []
     if d.get("images"):
-        send_message(vk, user_id, "⏳ Загружаю фото...")
-        attachments, _ = upload_photos_to_vk(d.get("images", [])[:10])
+        logging.info(f"📸 Загружаю {len(d['images'])} фото для Reddit поста {draft_id}...")
+        send_or_edit(vk, user_id, "⏳ Загружаю фото...")
+        try:
+            attachments, errors = upload_photos_to_vk(d.get("images", [])[:10])
+            if errors:
+                logging.warning(f"📸 Ошибки загрузки фото: {errors}")
+            logging.info(f"📸 Загружено {len(attachments)} фото")
+        except Exception as e:
+            logging.error(f"📸 Ошибка загрузки фото: {e}")
+            attachments = []
 
     if photo_only:
         if not attachments:
@@ -890,8 +898,11 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
         if not post_text and attachments:
             post_text = d.get("title", "")
 
+    logging.info(f"📝 Текст поста: {post_text[:100] if post_text else 'нет'}")
+    logging.info(f"📎 Вложения: {attachments}")
+
     posted = False
-    for _ in range(48):
+    for attempt in range(48):
         try:
             vk.wall.post(
                 owner_id=-GROUP_ID,
@@ -901,14 +912,18 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
                 publish_date=pub_time,
             )
             posted = True
+            logging.info(f"✅ Пост {draft_id} запланирован на {datetime.fromtimestamp(pub_time).strftime('%d.%m %H:%M')}")
             break
-        except Exception as e:
-            if "214" in str(e) or "already scheduled" in str(e).lower():
+        except vk_api.exceptions.ApiError as e:
+            if e.code == 214 or "already scheduled" in str(e).lower():
                 pub_time += 3600
                 logging.info(f"⏰ Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
             else:
-                logging.error(f"❌ Ошибка публикации Reddit: {e}")
+                logging.error(f"❌ VK API ошибка: code={e.code}, msg={e}")
                 break
+        except Exception as e:
+            logging.error(f"❌ Ошибка публикации Reddit: {e}")
+            break
 
     if posted:
         add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото из Reddit", 0)
@@ -926,7 +941,7 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
 
 def schedule_user_post(vk, post_data):
     """Ставит присланный в ЛС пост в отложенные записи группы.
-    Фото перезагружаются на стену группы (из ЛС напрямую прикрепить нельзя)."""
+    Фото перезагружаются на стену группы через messages.getById."""
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
@@ -936,47 +951,32 @@ def schedule_user_post(vk, post_data):
 
     new_attachments = []
     if attachments_str:
-        for att in attachments_str.split(","):
-            att = att.strip()
-            if not att:
-                continue
-            if att.startswith("photo"):
-                try:
-                    parts = att[5:].split("_")
-                    owner_id = int(parts[0])
-                    photo_id = int(parts[1])
-                    access_key = parts[2] if len(parts) > 2 else None
-
-                    logging.info(f"📎 Перезагружаю фото owner_id={owner_id}, photo_id={photo_id}")
-
-                    if access_key:
-                        photo_info = vk.photos.getById(photos=f"{owner_id}_{photo_id}", access_key=access_key)
-                        if photo_info:
-                            sizes = photo_info[0].get("sizes", [])
-                            if sizes:
-                                biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                                url = biggest.get("url")
-                                if url:
-                                    img_data = req.get(url, timeout=30).content
-                                    up_server = vk.photos.getWallUploadServer(group_id=GROUP_ID)
-                                    up = req.post(up_server['upload_url'],
-                                                  files={'photo': ('post.jpg', img_data, 'image/jpeg')}).json()
-                                    if 'photo' in up and up['photo']:
-                                        saved = vk.photos.saveWallPhoto(
-                                            photo=up['photo'], server=up['server'],
-                                            hash=up['hash'], group_id=GROUP_ID
-                                        )
-                                        if saved:
-                                            new_attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
-                                            logging.info(f"✅ Фото перезагружено")
-                                            continue
-                    else:
-                        new_attachments.append(att)
-                        logging.info(f"✅ Фото на стене группы")
-                        continue
-
-                except Exception as e:
-                    logging.error(f"❌ Ошибка обработки фото: {e}")
+        try:
+            msg_data = vk.messages.getById(message_ids=post_id, group_id=GROUP_ID)
+            if msg_data and msg_data.get("items"):
+                item = msg_data["items"][0]
+                for att in item.get("attachments", []):
+                    if att.get("type") == "photo":
+                        sizes = att["photo"].get("sizes", [])
+                        if sizes:
+                            biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                            url = biggest.get("url")
+                            if url:
+                                logging.info(f"📎 Скачиваю фото: {url[:80]}...")
+                                img_data = req.get(url, timeout=30).content
+                                up_server = vk.photos.getWallUploadServer(group_id=GROUP_ID)
+                                up = req.post(up_server['upload_url'],
+                                              files={'photo': ('post.jpg', img_data, 'image/jpeg')}).json()
+                                if 'photo' in up and up['photo']:
+                                    saved = vk.photos.saveWallPhoto(
+                                        photo=up['photo'], server=up['server'],
+                                        hash=up['hash'], group_id=GROUP_ID
+                                    )
+                                    if saved:
+                                        new_attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
+                                        logging.info(f"✅ Фото перезагружено на стену группы")
+        except Exception as e:
+            logging.error(f"❌ Ошибка обработки фото: {e}")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
