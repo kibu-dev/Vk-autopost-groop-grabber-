@@ -639,22 +639,11 @@ def run_messenger():
                 post_id = post.get("id", 0)
                 from_id = post.get("from_id", 0)
                 text = post.get("text", "")
-                attachments_list = post.get("attachments", [])
-
-                att_str = ""
-                for a in attachments_list:
-                    t = a.get("type", "")
-                    obj = a.get(t, {})
-                    oid = obj.get("owner_id", "")
-                    iid = obj.get("id", "")
-                    if oid and iid:
-                        att_str += f"{t}{oid}_{iid},"
 
                 post_data = {
                     "post_id": post_id,
                     "from_id": from_id,
                     "text": text,
-                    "attachments": att_str,
                     "time": int(datetime.now().timestamp())
                 }
                 pending_posts.append(post_data)
@@ -667,7 +656,7 @@ def run_messenger():
                     except:
                         author_str = f"id{from_id}"
 
-                    msg = f"📨 Новый пост в предложке!\n👤 {author_str}\n📝 {text[:200]}\n🖼 Вложений: {len(attachments_list)}\n\nОчередь: {len(pending_posts)} постов"
+                    msg = f"📨 Новый пост в предложке!\n👤 {author_str}\n📝 {text[:200]}\n\nОчередь: {len(pending_posts)} постов"
                     vk.messages.send(
                         user_id=ADMIN_ID,
                         message=msg,
@@ -700,9 +689,8 @@ def publish_from_queue(vk):
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
-    attachments = post_data["attachments"].rstrip(',') if post_data["attachments"] else ""
 
-    logging.info(f"📨 Публикация предложки #{post_id}: текст={text[:50] if text else 'нет'}, вложения={attachments[:100] if attachments else 'нет'}")
+    logging.info(f"📨 Публикация предложки #{post_id}: текст={text[:50] if text else 'нет'}")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
@@ -714,19 +702,13 @@ def publish_from_queue(vk):
             final_text = f"{text}\n\nАвтор: id{from_id}"
 
     try:
-        kwargs = {
-            "owner_id": -GROUP_ID,
-            "message": final_text,
-            "from_group": 1
-        }
-        if attachments:
-            kwargs["attachments"] = attachments
-
-        logging.info(f"📨 wall.post: owner_id={kwargs['owner_id']}, message_len={len(kwargs['message'])}, attachments={kwargs.get('attachments', 'нет')}")
-        result = vk.wall.post(**kwargs)
-        logging.info(f"✅ Предложка: опубликован #{post_id} → #{result.get('post_id', '?')} от {from_id}")
-        
-        vk.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
+        result = vk.wall.publishSuggestedPost(
+            owner_id=-GROUP_ID,
+            post_id=post_id,
+            message=final_text,
+            from_group=1
+        )
+        logging.info(f"✅ Предложка: опубликован #{post_id} от {from_id}")
         add_published_post(post_id, from_id, text)
         last_user_post_time = time.time()
     except vk_api.exceptions.ApiError as e:
