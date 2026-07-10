@@ -722,11 +722,14 @@ def publish_from_queue(vk):
         if attachments:
             kwargs["attachments"] = attachments
 
+        logging.info(f"📨 wall.post: owner_id={kwargs['owner_id']}, message_len={len(kwargs['message'])}, attachments={kwargs.get('attachments', 'нет')}")
         result = vk.wall.post(**kwargs)
         logging.info(f"✅ Предложка: опубликован #{post_id} → #{result.get('post_id', '?')} от {from_id}")
         
         vk.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
         add_published_post(post_id, from_id, text)
         last_user_post_time = time.time()
+    except vk_api.exceptions.ApiError as e:
+        logging.error(f"❌ VK API ошибка #{post_id}: code={e.code}, msg={e}")
     except Exception as e:
-        logging.error(f"❌ Ошибка публикации предложки #{post_id}: {e}")
+        logging.error(f"❌ Ошибка публикации предложки #{post_id}: {type(e).__name__}: {e}")
