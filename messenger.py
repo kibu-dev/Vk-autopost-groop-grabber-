@@ -1,3 +1,5 @@
+# messenger.py — полностью
+
 import re
 import time
 import logging
@@ -64,9 +66,10 @@ def upload_photo_from_message(vk, user_id, message_id):
 
 
 def _handle_suggested_post(vk, post: dict):
-    """Обрабатывает предложенный пост (WALL_POST_NEW с post_type='suggest')."""
-    from photo_utils import copy_attachments
-
+    """
+    Обрабатывает предложенный пост (WALL_POST_NEW с post_type='suggest').
+    Фото берутся напрямую из объекта поста (с access_key) — без перезалива.
+    """
     post_id = post.get("id")
     from_id = post.get("from_id") or post.get("signer_id") or 0
     text = post.get("text", "")
@@ -77,16 +80,15 @@ def _handle_suggested_post(vk, post: dict):
 
     if contains_any_link(text) or is_spam(text):
         reason = "ссылки" if contains_any_link(text) else "спам-слова"
-        att_str = ",".join(
-            f"photo{a['photo']['owner_id']}_{a['photo']['id']}"
-            for a in attachments if a.get("type") == "photo"
-        )
+        att_str = build_attachments(post)
         moderate_post(vk, post_id, from_id, text, att_str,
                       f"{reason} (предложка)", "suggestion")
         logging.info(f"  ⚠️ Предложка #{post_id} → модерация ({reason})")
         return
 
-    new_attachments = copy_attachments(vk, attachments)
+    att_str = build_attachments(post)
+    new_attachments = att_str.split(",") if att_str else []
+    logging.info(f"📎 Вложения предложки: {new_attachments}")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
@@ -148,7 +150,7 @@ def run_messenger():
     while True:
         try:
             for event in longpoll.listen():
-                # === ПРЕДЛОЖЕННЫЙ ПОСТ (кнопка «Предложить запись» в группе) ===
+                # === ПРЕДЛОЖЕННЫЙ ПОСТ ===
                 if event.type == VkBotEventType.WALL_POST_NEW:
                     post = event.object
                     if post.get("post_type") == "suggest":
