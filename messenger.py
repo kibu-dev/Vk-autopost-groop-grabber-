@@ -56,55 +56,29 @@ def show_reddit_draft(vk, user_id, drafts, ids, idx):
 
 
 def upload_photo_from_message(vk, user_id, message_id):
-    """Загружает фото из сообщения на стену группы через messagesUploadServer."""
+    """Загружает фото из сообщения через photos.copy."""
     try:
         msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
         if msg_data and msg_data.get("items"):
             for att in msg_data["items"][0].get("attachments", []):
                 if att.get("type") == "photo":
-                    sizes = att["photo"].get("sizes", [])
-                    if sizes:
-                        biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                        url = biggest.get("url")
-                        if url:
-                            img_data = req.get(url, timeout=30).content
+                    photo = att["photo"]
+                    owner_id = photo["owner_id"]
+                    photo_id = photo["id"]
 
-                            server = req.get(
-                                "https://api.vk.com/method/photos.getMessagesUploadServer",
-                                params={
-                                    "group_id": GROUP_ID,
-                                    "access_token": GROUP_TOKEN,
-                                    "v": "5.131"
-                                }
-                            ).json()
+                    copied = req.get(
+                        "https://api.vk.com/method/photos.copy",
+                        params={
+                            "owner_id": owner_id,
+                            "photo_id": photo_id,
+                            "access_token": GROUP_TOKEN,
+                            "v": "5.131"
+                        }
+                    ).json()
 
-                            if "response" not in server:
-                                logging.error(f"getMessagesUploadServer failed")
-                                return None
-
-                            up = req.post(
-                                server["response"]["upload_url"],
-                                files={'photo': ('img.jpg', img_data, 'image/jpeg')}
-                            ).json()
-
-                            if 'photo' in up:
-                                saved = req.get(
-                                    "https://api.vk.com/method/photos.saveMessagesPhoto",
-                                    params={
-                                        "photo": up["photo"],
-                                        "server": up["server"],
-                                        "hash": up["hash"],
-                                        "access_token": GROUP_TOKEN,
-                                        "v": "5.131"
-                                    }
-                                ).json()
-
-                                if "response" in saved and saved["response"]:
-                                    s = saved["response"][0]
-                                    att_str = f"photo{s['owner_id']}_{s['id']}"
-                                    if s.get("access_key"):
-                                        att_str += f"_{s['access_key']}"
-                                    return att_str
+                    if "response" in copied:
+                        new_id = copied["response"]["id"]
+                        return f"photo-{GROUP_ID}_{new_id}"
     except Exception as e:
         logging.error(f"Ошибка загрузки фото: {e}")
     return None
@@ -973,7 +947,7 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
 
 
 def schedule_user_post(vk, post_data):
-    """Ставит пост из ЛС в отложку. Фото загружаются через messagesUploadServer."""
+    """Ставит пост из ЛС в отложку. Фото копируются через photos.copy."""
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
@@ -987,53 +961,33 @@ def schedule_user_post(vk, post_data):
         if msg_data and msg_data.get("items"):
             for att in msg_data["items"][0].get("attachments", []):
                 if att.get("type") == "photo":
-                    sizes = att["photo"].get("sizes", [])
-                    if sizes:
-                        biggest = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                        url = biggest.get("url")
-                        if url:
-                            logging.info(f"📎 Загружаю фото: {url[:80]}...")
-                            img_data = req.get(url, timeout=30).content
+                    photo = att["photo"]
+                    owner_id = photo["owner_id"]
+                    photo_id = photo["id"]
 
-                            server = req.get(
-                                "https://api.vk.com/method/photos.getMessagesUploadServer",
-                                params={
-                                    "group_id": GROUP_ID,
-                                    "access_token": GROUP_TOKEN,
-                                    "v": "5.131"
-                                }
-                            ).json()
+                    logging.info(f"📎 Копирую фото owner_id={owner_id}, photo_id={photo_id}")
 
-                            if "response" not in server:
-                                logging.error("getMessagesUploadServer failed")
-                                continue
+                    try:
+                        copied = req.get(
+                            "https://api.vk.com/method/photos.copy",
+                            params={
+                                "owner_id": owner_id,
+                                "photo_id": photo_id,
+                                "access_token": GROUP_TOKEN,
+                                "v": "5.131"
+                            }
+                        ).json()
 
-                            up = req.post(
-                                server["response"]["upload_url"],
-                                files={'photo': ('post.jpg', img_data, 'image/jpeg')}
-                            ).json()
-
-                            if 'photo' in up:
-                                saved = req.get(
-                                    "https://api.vk.com/method/photos.saveMessagesPhoto",
-                                    params={
-                                        "photo": up["photo"],
-                                        "server": up["server"],
-                                        "hash": up["hash"],
-                                        "access_token": GROUP_TOKEN,
-                                        "v": "5.131"
-                                    }
-                                ).json()
-
-                                if "response" in saved and saved["response"]:
-                                    s = saved["response"][0]
-                                    att_str = f"photo{s['owner_id']}_{s['id']}"
-                                    if s.get("access_key"):
-                                        att_str += f"_{s['access_key']}"
-                                    new_attachments.append(att_str)
-                                    logging.info("✅ Фото загружено")
+                        if "response" in copied:
+                            new_id = copied["response"]["id"]
+                            new_attachments.append(f"photo-{GROUP_ID}_{new_id}")
+                            logging.info(f"✅ Фото скопировано: photo-{GROUP_ID}_{new_id}")
+                        else:
+                            logging.error(f"photos.copy failed: {copied}")
+                    except Exception as e:
+                        logging.error(f"Ошибка photos.copy: {e}")
     except Exception as e:
-        logging.error(f"❌ Ошибка фото: {e}")
+        logging.error(f"❌ Ошибка обработки вложений: {e}")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
