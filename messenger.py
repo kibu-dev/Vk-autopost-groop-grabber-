@@ -120,20 +120,10 @@ def run_messenger():
                             send_message(vk, user_id, "❌ Отменено.", get_main_keyboard())
                             continue
 
-                        attachments = ""
-                        try:
-                            msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
-                            if msg_data and msg_data.get("items"):
-                                attachments = build_attachments(msg_data["items"][0])
-                                logging.info(f"📎 Вложения от юзера: {attachments[:200] if attachments else 'нет'}")
-                        except Exception as e:
-                            logging.error(f"Ошибка получения вложений: {e}")
-
                         post_data = {
                             "post_id": message_id,
                             "from_id": user_id,
                             "text": text,
-                            "attachments": attachments,
                             "time": int(datetime.now().timestamp())
                         }
                         admin_state.pop(user_id, None)
