@@ -42,80 +42,94 @@ def save_drafts(data):
         json.dump(data, f, ensure_ascii=False)
 
 
-def _download_image(url, retries=3):
-    """Скачивает картинку с несколькими попытками. Возвращает bytes или None."""
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Referer': 'https://www.reddit.com/',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-    }
-    for attempt in range(retries):
+def _upload_single_photo(img_data, idx_label=""):
+    """
+    Загружает одно фото в VK.
+    Сначала пробует getWallUploadServer (правильный альбом для постов).
+    Если токен не имеет scope photos — fallback на getMessagesUploadServer.
+    """
+    # Попытка 1: wall upload (нужен scope photos в токене)
+    server = vk_api("photos.getWallUploadServer", {"group_id": GROUP_ID})
+    if server:
         try:
-            resp = req.get(url, timeout=25, headers=headers)
-            if resp.status_code == 200 and len(resp.content) >= 1000:
-                return resp.content
-            logging.warning(f"📸 Попытка {attempt+1}: статус {resp.status_code}, "
-                            f"размер {len(resp.content)} байт — {url[:70]}")
+            up = req.post(server["upload_url"],
+                          files={'photo': ('img.jpg', img_data, 'image/jpeg')},
+                          timeout=30).json()
+            if 'photo' in up:
+                saved = vk_api("photos.saveWallPhoto", {
+                    "group_id": GROUP_ID,
+                    "photo": up["photo"],
+                    "server": up["server"],
+                    "hash": up["hash"],
+                })
+                if saved and len(saved) > 0:
+                    att = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
+                    if saved[0].get("access_key"):
+                        att += f"_{saved[0]['access_key']}"
+                    logging.info(f"📸 ✅ Фото {idx_label} → wall album: {att}")
+                    return att
         except Exception as e:
-            logging.warning(f"📸 Попытка {attempt+1} ошибка: {e} — {url[:70]}")
+            logging.warning(f"📸 saveWallPhoto исключение: {e}")
+    else:
+        logging.warning(
+            "📸 getWallUploadServer недоступен (нет scope 'photos' в токене?). "
+            "Fallback → messagesUploadServer."
+        )
+
+    # Fallback: messages upload
+    server2 = vk_api("photos.getMessagesUploadServer", {"group_id": GROUP_ID})
+    if not server2:
+        logging.error(f"📸 Оба метода недоступны для фото {idx_label}")
+        return None
+
+    up2 = req.post(server2["upload_url"],
+                   files={'photo': ('img.jpg', img_data, 'image/jpeg')},
+                   timeout=30).json()
+    if 'photo' not in up2:
+        logging.warning(f"📸 messages upload вернул неожиданный ответ: {up2}")
+        return None
+
+    saved2 = vk_api("photos.saveMessagesPhoto", {
+        "photo": up2["photo"],
+        "server": up2["server"],
+        "hash": up2["hash"],
+    })
+    if saved2 and len(saved2) > 0:
+        att = f"photo{saved2[0]['owner_id']}_{saved2[0]['id']}"
+        if saved2[0].get("access_key"):
+            att += f"_{saved2[0]['access_key']}"
+        logging.warning(f"📸 ⚠️ Фото {idx_label} сохранено в альбом сообщений (fallback): {att}")
+        return att
+
     return None
 
 
 def upload_photos_to_vk(image_urls):
-    """Загружает фото из Reddit через messagesUploadServer (работает с групповым токеном)."""
+    """Загружает фото из Reddit. Сначала wall-альбом, затем fallback на messages."""
     attachments = []
     errors = []
 
-    for idx, img_url in enumerate(image_urls[:10]):
-        logging.info(f"📸 [{idx+1}/{len(image_urls[:10])}] Скачиваю: {img_url[:80]}")
-        img_data = _download_image(img_url)
-
-        if img_data is None:
-            msg = f"Не удалось скачать фото #{idx+1}: {img_url[:70]}"
-            errors.append(msg)
-            logging.warning(f"📸 ⚠️ {msg}")
-            continue
-
-        logging.info(f"📸 Скачано {len(img_data)//1024} КБ, загружаю в VK...")
-
+    for i, img_url in enumerate(image_urls[:10], 1):
         try:
-            # 1. getMessagesUploadServer (доступен групповому токену)
-            server = vk_api("photos.getMessagesUploadServer", {"group_id": GROUP_ID})
-            if not server:
-                errors.append(f"getMessagesUploadServer failed: {img_url[:60]}")
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://www.reddit.com/'
+            }
+            img_resp = req.get(img_url, timeout=20, headers=headers)
+            if img_resp.status_code != 200 or len(img_resp.content) < 1000:
+                errors.append(f"HTTP {img_resp.status_code}: {img_url[:60]}")
                 continue
 
-            # 2. Загружаем на сервер VK
-            up = req.post(server["upload_url"],
-                          files={'photo': ('img.jpg', img_data, 'image/jpeg')},
-                          timeout=30).json()
-            if 'photo' not in up:
-                errors.append(f"VK upload вернул неожиданный ответ для фото #{idx+1}")
-                logging.warning(f"📸 Ответ сервера: {up}")
-                continue
-
-            # 3. saveMessagesPhoto
-            saved = vk_api("photos.saveMessagesPhoto", {
-                "photo": up["photo"],
-                "server": up["server"],
-                "hash": up["hash"],
-            })
-
-            if saved and len(saved) > 0:
-                att = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
-                if saved[0].get("access_key"):
-                    att += f"_{saved[0]['access_key']}"
-                attachments.append(att)
-                logging.info(f"📸 ✅ Фото #{idx+1} сохранено: {att}")
+            result = _upload_single_photo(img_resp.content, f"{i}/{len(image_urls[:10])}")
+            if result:
+                attachments.append(result)
+                logging.info(f"📸 Фото {i} загружено: {img_url[:60]}...")
             else:
-                errors.append(f"saveMessagesPhoto вернул пустой ответ для фото #{idx+1}")
+                errors.append(f"Upload failed: {img_url[:60]}")
 
         except Exception as e:
-            errors.append(f"Исключение при загрузке фото #{idx+1}: {str(e)[:80]}")
-            logging.error(f"📸 Исключение: {e}")
+            errors.append(f"{str(e)[:80]}: {img_url[:60]}")
 
-    logging.info(f"📸 Итого: {len(attachments)} загружено, {len(errors)} ошибок")
     return attachments, errors
 
 
@@ -151,26 +165,24 @@ def reddit_post():
             except Exception as e:
                 logging.error(f"📱 Ошибка перевода текста: {e}")
 
-        drafts = load_drafts()
-
-        # Сразу заливаем фото в VK — Reddit URL-ы (особенно preview.redd.it) протухают
+        # Заранее загружаем фото и сохраняем vk_attachments в черновик
         vk_attachments = []
-        upload_errors = []
         if images:
-            logging.info(f"📱 Заливаю {len(images)} фото в VK сразу при получении поста...")
-            vk_attachments, upload_errors = upload_photos_to_vk(images)
-            if upload_errors:
-                logging.warning(f"📱 Ошибки заливки: {upload_errors}")
-            logging.info(f"📱 Залито {len(vk_attachments)}/{len(images)} фото")
+            logging.info(f"📸 Предзагрузка {len(images)} фото для нового Reddit поста...")
+            vk_attachments, errors = upload_photos_to_vk(images)
+            if errors:
+                logging.warning(f"📸 Ошибки предзагрузки: {errors}")
+            logging.info(f"📸 Предзагружено {len(vk_attachments)} фото")
 
+        drafts = load_drafts()
         draft_id = str(int(datetime.now().timestamp()))
         drafts[draft_id] = {
             "title": translated_title,
             "text": translated_text,
             "original_text": text,
             "original_title": title,
-            "images": images,                    # оригинальные URL на случай повторной попытки
-            "vk_attachments": vk_attachments,   # готовые VK-строки (используются при публикации)
+            "images": images,
+            "vk_attachments": vk_attachments,
             "url": url,
             "author": author,
             "subreddit": subreddit,
@@ -180,13 +192,10 @@ def reddit_post():
         }
         save_drafts(drafts)
 
-        photo_status = f"✅ {len(vk_attachments)}/{len(images)} фото" if images else "без фото"
-        if upload_errors:
-            photo_status += f" (⚠️ {len(upload_errors)} не загрузилось)"
-        msg = (f"📱 Новый пост с Reddit!\n"
-               f"📌 {translated_title[:100]}\n"
-               f"🖼 Фото: {photo_status}\n\n"
-               f"Заходи в раздел «📱 Reddit» для обработки.")
+        msg = f"📱 Новый пост с Reddit!\n📌 {translated_title[:100]}\n🖼 Фото: {len(images)} шт."
+        if vk_attachments:
+            msg += f" (загружено {len(vk_attachments)})"
+        msg += "\n\nЗаходи в раздел «📱 Reddit» для обработки."
 
         vk_api("messages.send", {
             "user_id": ADMIN_ID,
@@ -195,7 +204,7 @@ def reddit_post():
             "group_id": GROUP_ID,
         })
 
-        logging.info(f"📱 Reddit пост {draft_id} сохранён, вложений: {len(vk_attachments)}")
+        logging.info(f"📱 Reddit пост {draft_id} сохранён")
         return "ok"
     except Exception as e:
         logging.error(f"Reddit error: {e}")
