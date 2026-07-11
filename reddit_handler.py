@@ -40,69 +40,59 @@ def save_drafts(data):
         json.dump(data, f, ensure_ascii=False)
 
 
-def upload_photo_to_wall(image_url):
-    """Загружает одно фото на стену группы через messagesUploadServer (работает с групповым токеном)."""
-    try:
-        # 1. Получаем upload server для сообщений (доступен групповому токену)
-        server = vk_api("photos.getMessagesUploadServer", {"group_id": GROUP_ID})
-        if not server:
-            return None
-
-        # 2. Скачиваем фото
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://www.reddit.com/'
-        }
-        img = req.get(image_url, timeout=20, headers=headers)
-        if img.status_code != 200 or len(img.content) < 1000:
-            return None
-
-        # 3. Загружаем
-        up = req.post(server["upload_url"],
-                      files={'photo': ('img.jpg', img.content, 'image/jpeg')}).json()
-        if 'photo' not in up:
-            return None
-
-        # 4. Сохраняем как фото сообщения
-        saved = vk_api("photos.saveMessagesPhoto", {
-            "photo": up["photo"],
-            "server": up["server"],
-            "hash": up["hash"],
-        })
-        if not saved or not saved[0]:
-            return None
-
-        # 5. Фото сохранено в альбом сообщений, теперь его можно прикрепить к посту на стене
-        owner_id = saved[0]["owner_id"]
-        photo_id = saved[0]["id"]
-        access_key = saved[0].get("access_key", "")
-
-        attachment = f"photo{owner_id}_{photo_id}"
-        if access_key:
-            attachment += f"_{access_key}"
-
-        return attachment
-
-    except Exception as e:
-        logging.error(f"Upload error: {e}")
-        return None
-
-
 def upload_photos_to_vk(image_urls):
-    """Загружает фото через messagesUploadServer."""
-    if not image_urls:
-        return [], []
-
+    """Загружает фото из Reddit в альбом «Стена» группы (album_id=-7).
+    Работает с групповым токеном."""
     attachments = []
     errors = []
 
-    for url in image_urls[:10]:
-        result = upload_photo_to_wall(url)
-        if result:
-            attachments.append(result)
-            logging.info(f"📸 Фото загружено: {url[:60]}...")
-        else:
-            errors.append(f"Failed: {url[:60]}")
+    for img_url in image_urls[:10]:
+        try:
+            img_data = req.get(img_url, timeout=20, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://www.reddit.com/'
+            }).content
+
+            if len(img_data) < 1000:
+                errors.append(f"Empty image: {img_url[:60]}")
+                continue
+
+            # 1. Сервер для загрузки в альбом
+            server_resp = vk_api("photos.getUploadServer", {
+                "group_id": GROUP_ID,
+                "album_id": -7  # Альбом «Стена»
+            })
+            if not server_resp:
+                errors.append(f"getUploadServer failed: {img_url[:60]}")
+                continue
+
+            # 2. Загружаем фото
+            up_resp = req.post(
+                server_resp["upload_url"],
+                files={'photo': ('photo.jpg', img_data, 'image/jpeg')}
+            ).json()
+
+            if 'photo' not in up_resp:
+                errors.append(f"Upload failed: {img_url[:60]}")
+                continue
+
+            # 3. Сохраняем в альбоме
+            save_resp = vk_api("photos.save", {
+                "group_id": GROUP_ID,
+                "album_id": -7,
+                "photo": up_resp["photo"],
+                "server": up_resp["server"],
+                "hash": up_resp["hash"],
+            })
+
+            if save_resp and len(save_resp) > 0:
+                attachments.append(f"photo{save_resp[0]['owner_id']}_{save_resp[0]['id']}")
+                logging.info(f"📸 Фото загружено: {img_url[:60]}...")
+            else:
+                errors.append(f"save failed: {img_url[:60]}")
+
+        except Exception as e:
+            errors.append(f"{str(e)[:80]}: {img_url[:60]}")
 
     return attachments, errors
 
