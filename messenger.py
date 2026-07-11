@@ -56,29 +56,14 @@ def show_reddit_draft(vk, user_id, drafts, ids, idx):
 
 
 def upload_photo_from_message(vk, user_id, message_id):
-    """Загружает фото из сообщения через photos.copy."""
+    """Загружает фото из сообщения через photo_utils."""
+    from photo_utils import upload_photo_to_group
     try:
         msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
         if msg_data and msg_data.get("items"):
             for att in msg_data["items"][0].get("attachments", []):
                 if att.get("type") == "photo":
-                    photo = att["photo"]
-                    owner_id = photo["owner_id"]
-                    photo_id = photo["id"]
-
-                    copied = req.get(
-                        "https://api.vk.com/method/photos.copy",
-                        params={
-                            "owner_id": owner_id,
-                            "photo_id": photo_id,
-                            "access_token": GROUP_TOKEN,
-                            "v": "5.131"
-                        }
-                    ).json()
-
-                    if "response" in copied:
-                        new_id = copied["response"]["id"]
-                        return f"photo-{GROUP_ID}_{new_id}"
+                    return upload_photo_to_group(vk, att["photo"])
     except Exception as e:
         logging.error(f"Ошибка загрузки фото: {e}")
     return None
@@ -937,47 +922,21 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
 
 
 def schedule_user_post(vk, post_data):
-    """Ставит пост из ЛС в отложку. Фото копируются через photos.copy."""
+    """
+    Ставит пост из ЛС в отложку.
+    Фото скачиваются по URL и перезаливаются через photo_utils.
+    """
+    from photo_utils import copy_photos_from_message
+
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
 
     logging.info(f"📨 Публикация поста #{post_id}: текст={text[:50] if text else 'нет'}")
 
-    new_attachments = []
-
-    try:
-        msg_data = vk.messages.getById(message_ids=post_id, group_id=GROUP_ID)
-        if msg_data and msg_data.get("items"):
-            for att in msg_data["items"][0].get("attachments", []):
-                if att.get("type") == "photo":
-                    photo = att["photo"]
-                    owner_id = photo["owner_id"]
-                    photo_id = photo["id"]
-
-                    logging.info(f"📎 Копирую фото owner_id={owner_id}, photo_id={photo_id}")
-
-                    try:
-                        copied = req.get(
-                            "https://api.vk.com/method/photos.copy",
-                            params={
-                                "owner_id": owner_id,
-                                "photo_id": photo_id,
-                                "access_token": GROUP_TOKEN,
-                                "v": "5.131"
-                            }
-                        ).json()
-
-                        if "response" in copied:
-                            new_id = copied["response"]["id"]
-                            new_attachments.append(f"photo-{GROUP_ID}_{new_id}")
-                            logging.info(f"✅ Фото скопировано: photo-{GROUP_ID}_{new_id}")
-                        else:
-                            logging.error(f"photos.copy failed: {copied}")
-                    except Exception as e:
-                        logging.error(f"Ошибка photos.copy: {e}")
-    except Exception as e:
-        logging.error(f"❌ Ошибка обработки вложений: {e}")
+    new_attachments = copy_photos_from_message(vk, post_id, GROUP_ID)
+    if new_attachments:
+        logging.info(f"📷 Загружено фото: {len(new_attachments)} шт.")
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
