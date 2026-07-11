@@ -26,11 +26,11 @@ def save_drafts(data):
 
 
 def _upload_single_photo(img_data, idx_label=""):
-    """Загружает фото через wall upload — как граббер."""
+    """Загружает фото через messagesUploadServer (работает с групповым токеном)."""
     try:
-        # 1. Получаем сервер загрузки на стену
+        # 1. getMessagesUploadServer
         server = req.get(
-            "https://api.vk.com/method/photos.getWallUploadServer",
+            "https://api.vk.com/method/photos.getMessagesUploadServer",
             params={
                 "group_id": GROUP_ID,
                 "access_token": GROUP_TOKEN,
@@ -39,12 +39,8 @@ def _upload_single_photo(img_data, idx_label=""):
             timeout=30
         ).json()
 
-        if "error" in server:
-            logging.warning(f"📸 getWallUploadServer error #{idx_label}: {server['error']}")
-            return None
-
         if "response" not in server:
-            logging.error(f"📸 getWallUploadServer failed #{idx_label}")
+            logging.error(f"📸 getMessagesUploadServer failed #{idx_label}")
             return None
 
         upload_url = server["response"]["upload_url"]
@@ -56,16 +52,16 @@ def _upload_single_photo(img_data, idx_label=""):
             timeout=60
         ).json()
 
-        if not up.get("photo"):
+        photo_data = up.get("photo", "")
+        if not photo_data:
             logging.warning(f"📸 VK не принял фото #{idx_label}: {up}")
             return None
 
-        # 3. Сохраняем на стену
+        # 3. Сохраняем
         saved = req.get(
-            "https://api.vk.com/method/photos.saveWallPhoto",
+            "https://api.vk.com/method/photos.saveMessagesPhoto",
             params={
-                "group_id": GROUP_ID,
-                "photo": up["photo"],
+                "photo": photo_data,
                 "server": up["server"],
                 "hash": up["hash"],
                 "access_token": GROUP_TOKEN,
@@ -82,7 +78,7 @@ def _upload_single_photo(img_data, idx_label=""):
             logging.info(f"📸 ✅ Фото #{idx_label}: {att}")
             return att
         else:
-            logging.error(f"📸 saveWallPhoto failed #{idx_label}: {saved}")
+            logging.error(f"📸 saveMessagesPhoto failed #{idx_label}: {saved}")
             return None
 
     except Exception as e:
@@ -91,7 +87,7 @@ def _upload_single_photo(img_data, idx_label=""):
 
 
 def upload_photos_to_vk(image_urls):
-    """Загружает фото из Reddit на стену группы."""
+    """Загружает фото из Reddit через messagesUploadServer."""
     attachments = []
     errors = []
 
@@ -154,7 +150,7 @@ def reddit_post():
             except Exception as e:
                 logging.error(f"📱 Ошибка перевода текста: {e}")
 
-        # Заранее загружаем фото при получении поста
+        # Загружаем фото при получении поста
         vk_attachments = []
         if images:
             logging.info(f"📸 Загружаю {len(images)} фото в VK сразу при получении поста...")
@@ -186,7 +182,6 @@ def reddit_post():
             msg += f" (загружено {len(vk_attachments)})"
         msg += "\n\nЗаходи в раздел «📱 Reddit» для обработки."
 
-        # Отправляем уведомление админу через прямой HTTP
         req.get(
             "https://api.vk.com/method/messages.send",
             params={
