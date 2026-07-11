@@ -1,3 +1,5 @@
+# reddit_handler.py — полностью
+
 import logging
 import json
 import requests as req
@@ -41,8 +43,7 @@ def save_drafts(data):
 
 
 def upload_photos_to_vk(image_urls):
-    """Загружает фото из Reddit в альбом «Стена» группы (album_id=-7).
-    Работает с групповым токеном."""
+    """Загружает фото из Reddit через messagesUploadServer (работает с групповым токеном)."""
     attachments = []
     errors = []
 
@@ -57,39 +58,34 @@ def upload_photos_to_vk(image_urls):
                 errors.append(f"Empty image: {img_url[:60]}")
                 continue
 
-            # 1. Сервер для загрузки в альбом
-            server_resp = vk_api("photos.getUploadServer", {
-                "group_id": GROUP_ID,
-                "album_id": -7  # Альбом «Стена»
-            })
-            if not server_resp:
-                errors.append(f"getUploadServer failed: {img_url[:60]}")
+            # 1. getMessagesUploadServer (доступен групповому токену)
+            server = vk_api("photos.getMessagesUploadServer", {"group_id": GROUP_ID})
+            if not server:
+                errors.append(f"getMessagesUploadServer failed: {img_url[:60]}")
                 continue
 
-            # 2. Загружаем фото
-            up_resp = req.post(
-                server_resp["upload_url"],
-                files={'photo': ('photo.jpg', img_data, 'image/jpeg')}
-            ).json()
-
-            if 'photo' not in up_resp:
+            # 2. Загружаем
+            up = req.post(server["upload_url"],
+                          files={'photo': ('img.jpg', img_data, 'image/jpeg')}).json()
+            if 'photo' not in up:
                 errors.append(f"Upload failed: {img_url[:60]}")
                 continue
 
-            # 3. Сохраняем в альбоме
-            save_resp = vk_api("photos.save", {
-                "group_id": GROUP_ID,
-                "album_id": -7,
-                "photo": up_resp["photo"],
-                "server": up_resp["server"],
-                "hash": up_resp["hash"],
+            # 3. saveMessagesPhoto
+            saved = vk_api("photos.saveMessagesPhoto", {
+                "photo": up["photo"],
+                "server": up["server"],
+                "hash": up["hash"],
             })
 
-            if save_resp and len(save_resp) > 0:
-                attachments.append(f"photo{save_resp[0]['owner_id']}_{save_resp[0]['id']}")
+            if saved and len(saved) > 0:
+                att = f"photo{saved[0]['owner_id']}_{saved[0]['id']}"
+                if saved[0].get("access_key"):
+                    att += f"_{saved[0]['access_key']}"
+                attachments.append(att)
                 logging.info(f"📸 Фото загружено: {img_url[:60]}...")
             else:
-                errors.append(f"save failed: {img_url[:60]}")
+                errors.append(f"saveMessagesPhoto failed: {img_url[:60]}")
 
         except Exception as e:
             errors.append(f"{str(e)[:80]}: {img_url[:60]}")
