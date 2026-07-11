@@ -1,5 +1,3 @@
-# main.py — полностью
-
 import multiprocessing
 import threading
 import logging
@@ -10,7 +8,6 @@ from grabber import run_grabber
 from messenger import run_messenger
 from group_acceptor import run_group_acceptor
 from weekly_horoscope import run_weekly_horoscope
-from suggestion_checker import run_suggestion_checker
 
 def start_reddit():
     from reddit_handler import run_reddit_handler
@@ -38,10 +35,6 @@ if __name__ == "__main__":
     threading.Thread(target=run_group_acceptor, daemon=True).start()
     threading.Thread(target=run_weekly_horoscope, daemon=True).start()
 
-    # Обработчик «Предложить пост» — скачивает фото и ставит в отложенные
-    threading.Thread(target=run_suggestion_checker, daemon=True).start()
-
-    # Reddit handler в отдельном процессе
     multiprocessing.Process(target=start_reddit, daemon=True).start()
 
     run_messenger()
