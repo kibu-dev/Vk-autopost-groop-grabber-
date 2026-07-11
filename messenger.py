@@ -69,6 +69,7 @@ def _handle_suggested_post(vk, post: dict):
     """
     Обрабатывает предложенный пост (WALL_POST_NEW с post_type='suggest').
     Фото берутся напрямую из объекта поста (с access_key) — без перезалива.
+    После публикации отложки предложка удаляется.
     """
     post_id = post.get("id")
     from_id = post.get("from_id") or post.get("signer_id") or 0
@@ -114,6 +115,13 @@ def _handle_suggested_post(vk, post: dict):
             when = datetime.fromtimestamp(slot).strftime("%d.%m %H:%M")
             logging.info(f"✅ Предложка #{post_id} → отложен на {when} "
                          f"({'фото: ' + str(len(new_attachments)) if new_attachments else 'без фото'})")
+
+            # Отклоняем оригинальную предложку
+            try:
+                vk.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
+                logging.info(f"🗑️ Предложка #{post_id} отклонена из очереди предложенных")
+            except Exception as e:
+                logging.warning(f"Не удалось отклонить предложку #{post_id}: {e}")
 
             if ADMIN_ID:
                 try:
@@ -856,14 +864,20 @@ def run_messenger():
 
 
 def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
+    """Публикует Reddit-черновик в отложку. Использует vk_attachments из черновика если есть."""
     drafts = load_drafts()
     d = drafts.get(draft_id)
     if not d:
         send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
         return
-    attachments = []
-    if d.get("images"):
-        logging.info(f"📸 Загружаю {len(d['images'])} фото для Reddit поста {draft_id}...")
+
+    # Используем готовые vk_attachments из черновика
+    attachments = d.get("vk_attachments", [])
+    if attachments:
+        logging.info(f"📸 Используем {len(attachments)} готовых VK-вложений из черновика")
+    elif d.get("images"):
+        # Резервный путь: загружаем сейчас
+        logging.info(f"📸 vk_attachments пусты, заливаю {len(d['images'])} фото сейчас...")
         send_or_edit(vk, user_id, "⏳ Загружаю фото...")
         try:
             attachments, errors = upload_photos_to_vk(d.get("images", [])[:10])
@@ -873,6 +887,7 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
         except Exception as e:
             logging.error(f"📸 Ошибка загрузки фото: {e}")
             attachments = []
+
     if photo_only:
         if not attachments:
             send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_admin_main_keyboard())
@@ -886,22 +901,34 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
             post_text = f"{d['title']}\n\n{post_text}"
         if not post_text and attachments:
             post_text = d.get("title", "")
+
+    logging.info(f"📝 Текст поста: {post_text[:100] if post_text else 'нет'}")
+    logging.info(f"📎 Вложения: {attachments}")
+
     posted = False
     for _ in range(48):
         try:
-            vk.wall.post(owner_id=-GROUP_ID, message=post_text[:4000] if post_text else "",
-                         attachments=",".join(attachments) if attachments else None, from_group=1, publish_date=pub_time)
+            vk.wall.post(
+                owner_id=-GROUP_ID,
+                message=post_text[:4000] if post_text else "",
+                attachments=",".join(attachments) if attachments else None,
+                from_group=1,
+                publish_date=pub_time,
+            )
             posted = True
+            logging.info(f"✅ Пост {draft_id} запланирован на {datetime.fromtimestamp(pub_time).strftime('%d.%m %H:%M')}")
             break
         except vk_api.exceptions.ApiError as e:
             if e.code == 214 or "already scheduled" in str(e).lower():
                 pub_time += 3600
-                continue
-            logging.error(f"❌ VK API ошибка: code={e.code}, msg={e}")
-            break
+                logging.info(f"⏰ Время занято, пробую {datetime.fromtimestamp(pub_time).strftime('%H:%M')}")
+            else:
+                logging.error(f"❌ VK API ошибка: code={e.code}, msg={e}")
+                break
         except Exception as e:
             logging.error(f"❌ Ошибка публикации Reddit: {e}")
             break
+
     if posted:
         add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото из Reddit", 0)
         del drafts[draft_id]
