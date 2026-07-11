@@ -42,33 +42,57 @@ def save_drafts(data):
         json.dump(data, f, ensure_ascii=False)
 
 
+def _download_image(url, retries=3):
+    """Скачивает картинку с несколькими попытками. Возвращает bytes или None."""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Referer': 'https://www.reddit.com/',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    }
+    for attempt in range(retries):
+        try:
+            resp = req.get(url, timeout=25, headers=headers)
+            if resp.status_code == 200 and len(resp.content) >= 1000:
+                return resp.content
+            logging.warning(f"📸 Попытка {attempt+1}: статус {resp.status_code}, "
+                            f"размер {len(resp.content)} байт — {url[:70]}")
+        except Exception as e:
+            logging.warning(f"📸 Попытка {attempt+1} ошибка: {e} — {url[:70]}")
+    return None
+
+
 def upload_photos_to_vk(image_urls):
     """Загружает фото из Reddit через messagesUploadServer (работает с групповым токеном)."""
     attachments = []
     errors = []
 
-    for img_url in image_urls[:10]:
+    for idx, img_url in enumerate(image_urls[:10]):
+        logging.info(f"📸 [{idx+1}/{len(image_urls[:10])}] Скачиваю: {img_url[:80]}")
+        img_data = _download_image(img_url)
+
+        if img_data is None:
+            msg = f"Не удалось скачать фото #{idx+1}: {img_url[:70]}"
+            errors.append(msg)
+            logging.warning(f"📸 ⚠️ {msg}")
+            continue
+
+        logging.info(f"📸 Скачано {len(img_data)//1024} КБ, загружаю в VK...")
+
         try:
-            img_data = req.get(img_url, timeout=20, headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://www.reddit.com/'
-            }).content
-
-            if len(img_data) < 1000:
-                errors.append(f"Empty image: {img_url[:60]}")
-                continue
-
             # 1. getMessagesUploadServer (доступен групповому токену)
             server = vk_api("photos.getMessagesUploadServer", {"group_id": GROUP_ID})
             if not server:
                 errors.append(f"getMessagesUploadServer failed: {img_url[:60]}")
                 continue
 
-            # 2. Загружаем
+            # 2. Загружаем на сервер VK
             up = req.post(server["upload_url"],
-                          files={'photo': ('img.jpg', img_data, 'image/jpeg')}).json()
+                          files={'photo': ('img.jpg', img_data, 'image/jpeg')},
+                          timeout=30).json()
             if 'photo' not in up:
-                errors.append(f"Upload failed: {img_url[:60]}")
+                errors.append(f"VK upload вернул неожиданный ответ для фото #{idx+1}")
+                logging.warning(f"📸 Ответ сервера: {up}")
                 continue
 
             # 3. saveMessagesPhoto
@@ -83,13 +107,15 @@ def upload_photos_to_vk(image_urls):
                 if saved[0].get("access_key"):
                     att += f"_{saved[0]['access_key']}"
                 attachments.append(att)
-                logging.info(f"📸 Фото загружено: {img_url[:60]}...")
+                logging.info(f"📸 ✅ Фото #{idx+1} сохранено: {att}")
             else:
-                errors.append(f"saveMessagesPhoto failed: {img_url[:60]}")
+                errors.append(f"saveMessagesPhoto вернул пустой ответ для фото #{idx+1}")
 
         except Exception as e:
-            errors.append(f"{str(e)[:80]}: {img_url[:60]}")
+            errors.append(f"Исключение при загрузке фото #{idx+1}: {str(e)[:80]}")
+            logging.error(f"📸 Исключение: {e}")
 
+    logging.info(f"📸 Итого: {len(attachments)} загружено, {len(errors)} ошибок")
     return attachments, errors
 
 
@@ -126,13 +152,25 @@ def reddit_post():
                 logging.error(f"📱 Ошибка перевода текста: {e}")
 
         drafts = load_drafts()
+
+        # Сразу заливаем фото в VK — Reddit URL-ы (особенно preview.redd.it) протухают
+        vk_attachments = []
+        upload_errors = []
+        if images:
+            logging.info(f"📱 Заливаю {len(images)} фото в VK сразу при получении поста...")
+            vk_attachments, upload_errors = upload_photos_to_vk(images)
+            if upload_errors:
+                logging.warning(f"📱 Ошибки заливки: {upload_errors}")
+            logging.info(f"📱 Залито {len(vk_attachments)}/{len(images)} фото")
+
         draft_id = str(int(datetime.now().timestamp()))
         drafts[draft_id] = {
             "title": translated_title,
             "text": translated_text,
             "original_text": text,
             "original_title": title,
-            "images": images,
+            "images": images,                    # оригинальные URL на случай повторной попытки
+            "vk_attachments": vk_attachments,   # готовые VK-строки (используются при публикации)
             "url": url,
             "author": author,
             "subreddit": subreddit,
@@ -142,7 +180,13 @@ def reddit_post():
         }
         save_drafts(drafts)
 
-        msg = f"📱 Новый пост с Reddit!\n📌 {translated_title[:100]}\n🖼 Фото: {len(images)} шт.\n\nЗаходи в раздел «📱 Reddit» для обработки."
+        photo_status = f"✅ {len(vk_attachments)}/{len(images)} фото" if images else "без фото"
+        if upload_errors:
+            photo_status += f" (⚠️ {len(upload_errors)} не загрузилось)"
+        msg = (f"📱 Новый пост с Reddit!\n"
+               f"📌 {translated_title[:100]}\n"
+               f"🖼 Фото: {photo_status}\n\n"
+               f"Заходи в раздел «📱 Reddit» для обработки.")
 
         vk_api("messages.send", {
             "user_id": ADMIN_ID,
@@ -151,7 +195,7 @@ def reddit_post():
             "group_id": GROUP_ID,
         })
 
-        logging.info(f"📱 Reddit пост {draft_id} сохранён")
+        logging.info(f"📱 Reddit пост {draft_id} сохранён, вложений: {len(vk_attachments)}")
         return "ok"
     except Exception as e:
         logging.error(f"Reddit error: {e}")
