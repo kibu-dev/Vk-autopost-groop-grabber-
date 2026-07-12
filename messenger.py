@@ -1,4 +1,4 @@
-# messenger.py — полностью (Иркутское время + фото в preview)
+# messenger.py — полностью (счётчик Reddit + фото в preview + Иркутское время)
 
 import re
 import time
@@ -26,17 +26,14 @@ IRK_TZ = timezone(timedelta(hours=8))
 
 
 def now_irk():
-    """Текущее время в Иркутске (UTC+8)."""
     return datetime.now(IRK_TZ)
 
 
 def ts_to_irk_str(ts):
-    """Timestamp → строка Иркутского времени."""
     return datetime.fromtimestamp(ts, IRK_TZ).strftime('%d.%m %H:%M')
 
 
 def answer_callback(vk, event, text="", keyboard=None, snackbar=None):
-    """Отвечает на callback: редактирует то же сообщение. Без snackbar по умолчанию."""
     try:
         event_data = json.dumps({"type": "show_snackbar", "text": snackbar}) if snackbar else None
         vk.messages.sendMessageEventAnswer(
@@ -74,11 +71,8 @@ def show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id=None):
     d = pending[ids[idx]]
     msg = format_reddit_preview(d, idx, len(ids))
     admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
-    
-    # Прикрепляем фото к сообщению
     attachments = d.get("vk_attachments", [])
     attachment_str = ",".join(attachments) if attachments else None
-    
     send_or_edit(vk, user_id, msg, get_reddit_post_keyboard(
         bool(d.get('text', '').strip()),
         bool(d.get('title', '').strip())
@@ -165,7 +159,6 @@ def run_messenger():
         try:
             for event in longpoll.listen():
 
-                # === CALLBACK ОТ КЛАВИАТУРЫ ===
                 if event.type == VkBotEventType.MESSAGE_EVENT:
                     payload = event.object.get("payload", {})
                     cmd = payload.get("cmd", "")
@@ -200,7 +193,9 @@ def run_messenger():
 
                     elif cmd == "admin_menu":
                         admin_state.pop(user_id, None)
-                        answer_callback(vk, event, "Админ-меню:", get_admin_main_keyboard())
+                        drafts = load_drafts()
+                        reddit_count = len([v for v in drafts.values() if v.get("status") == "pending"])
+                        answer_callback(vk, event, "Админ-меню:", get_admin_main_keyboard(reddit_count))
 
                     elif cmd == "user_menu":
                         answer_callback(vk, event, "Меню:", get_main_keyboard())
@@ -235,7 +230,12 @@ def run_messenger():
                         d = pending[ids[0]]
                         msg = format_reddit_preview(d, 0, len(ids))
                         admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": 0}
-                        show_reddit_draft(vk, user_id, load_drafts(), ids, 0, conv_msg_id)
+                        attachments = d.get("vk_attachments", [])
+                        attachment_str = ",".join(attachments) if attachments else None
+                        send_or_edit(vk, user_id, msg, get_reddit_post_keyboard(
+                            bool(d.get('text', '').strip()),
+                            bool(d.get('title', '').strip())
+                        ), conv_msg_id, attachment_str)
 
                     elif cmd == "reddit_prev":
                         state = admin_state.get(user_id, {})
@@ -554,14 +554,12 @@ def run_messenger():
 
                     continue
 
-                # === ПРЕДЛОЖКА ===
                 if event.type == VkBotEventType.WALL_POST_NEW:
                     post = event.object
                     if post.get("post_type") == "suggest":
                         _handle_suggested_post(vk, post)
                     continue
 
-                # === ОБЫЧНЫЕ СООБЩЕНИЯ ===
                 if event.type != VkBotEventType.MESSAGE_NEW:
                     continue
 
@@ -734,7 +732,9 @@ def run_messenger():
 
                 t = text.lower()
                 if t in ["начать", "меню", "start"]:
-                    k = get_admin_main_keyboard() if is_admin else get_main_keyboard()
+                    drafts = load_drafts()
+                    reddit_count = len([v for v in drafts.values() if v.get("status") == "pending"])
+                    k = get_admin_main_keyboard(reddit_count) if is_admin else get_main_keyboard()
                     vk.messages.send(
                         user_id=user_id,
                         message="👋 Привет! Выбери действие:",
