@@ -1,4 +1,4 @@
-# messenger.py — полностью (счётчик Reddit + фото в preview + Иркутское время)
+# messenger.py — полностью (финальная версия)
 
 import re
 import time
@@ -166,6 +166,7 @@ def run_messenger():
                     is_admin = (user_id == ADMIN_ID)
                     conv_msg_id = event.object.get("conversation_message_id")
 
+                    # ==================== АДМИН-МЕНЮ ====================
                     if cmd == "queue":
                         sched = get_scheduled_posts()
                         msg = "📅 Запланированные:\n\n" + "\n".join(
@@ -200,6 +201,7 @@ def run_messenger():
                     elif cmd == "user_menu":
                         answer_callback(vk, event, "Меню:", get_main_keyboard())
 
+                    # ==================== ДОНОРЫ / СЛОВА ====================
                     elif cmd == "add_donor":
                         admin_state[user_id] = {"mode": "add_donor"}
                         answer_callback(vk, event, "Введите ID/ссылку:", get_back_admin_keyboard())
@@ -220,6 +222,7 @@ def run_messenger():
                         admin_state[user_id] = {"mode": "del_word"}
                         answer_callback(vk, event, "Введите слово:", get_back_admin_keyboard())
 
+                    # ==================== REDDIT ====================
                     elif cmd == "reddit":
                         drafts = load_drafts()
                         pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
@@ -318,6 +321,7 @@ def run_messenger():
                                 save_drafts(drafts)
                             show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id)
 
+                    # ==================== ВЫБОР ДАТЫ/ВРЕМЕНИ ====================
                     elif cmd == "pick_date":
                         state = admin_state.get(user_id, {})
                         state["mode"] = "reddit_pick_range"
@@ -357,6 +361,7 @@ def run_messenger():
                         except:
                             answer_callback(vk, event, "❌ Ошибка даты.", get_admin_main_keyboard())
 
+                    # ==================== AI / ГОРОСКОП / ПРАЗДНИКИ ====================
                     elif cmd == "ai_poster":
                         answer_callback(vk, event, "🤖 AI-постер:", get_ai_keyboard())
 
@@ -505,6 +510,7 @@ def run_messenger():
                             save_holidays_config(config)
                             answer_callback(vk, event, f"✅ Обновлено! ({len(holidays)})", get_holidays_keyboard(), "Обновлено")
 
+                    # ==================== ПОЛЬЗОВАТЕЛЬСКИЕ ====================
                     elif cmd == "suggest_post":
                         if is_admin:
                             answer_callback(vk, event, "Ты админ, используй AI или Reddit.", get_admin_main_keyboard())
@@ -554,12 +560,14 @@ def run_messenger():
 
                     continue
 
+                # ==================== ПРЕДЛОЖКА ====================
                 if event.type == VkBotEventType.WALL_POST_NEW:
                     post = event.object
                     if post.get("post_type") == "suggest":
                         _handle_suggested_post(vk, post)
                     continue
 
+                # ==================== ОБЫЧНЫЕ СООБЩЕНИЯ ====================
                 if event.type != VkBotEventType.MESSAGE_NEW:
                     continue
 
@@ -670,13 +678,22 @@ def run_messenger():
                             if text != "-":
                                 drafts[draft_id]["text"] = text
                             save_drafts(drafts)
+                            admin_state.pop(user_id, None)
+                            # Возвращаемся в reddit_view
                             pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
                             ids = list(pending.keys())
                             if ids:
                                 idx = ids.index(draft_id) if draft_id in ids else 0
-                                show_reddit_draft(vk, user_id, drafts, ids, idx)
+                                admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+                                d = pending[ids[idx]]
+                                msg = format_reddit_preview(d, idx, len(ids))
+                                attachments = d.get("vk_attachments", [])
+                                attachment_str = ",".join(attachments) if attachments else None
+                                send_or_edit(vk, user_id, msg, get_reddit_post_keyboard(
+                                    bool(d.get('text', '').strip()),
+                                    bool(d.get('title', '').strip())
+                                ), attachment=attachment_str)
                             else:
-                                admin_state.pop(user_id, None)
                                 send_or_edit(vk, user_id, "📱 Все посты обработаны!", get_admin_main_keyboard())
                         continue
 
