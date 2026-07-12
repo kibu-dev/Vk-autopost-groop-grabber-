@@ -1,4 +1,4 @@
-# reddit_handler.py — полностью
+# reddit_handler.py — полностью (без уведомлений админу, с vk_attachments при получении)
 
 import logging
 import json
@@ -75,22 +75,6 @@ def reddit_post():
             "translated": True
         }
         save_drafts(drafts)
-
-        msg = f"📱 Новый пост с Reddit!\n📌 {translated_title[:100]}\n🖼 Фото: {len(images)} шт.\n\nЗаходи в раздел «📱 Reddit» для обработки."
-
-        req.get(
-            "https://api.vk.com/method/messages.send",
-            params={
-                "user_id": ADMIN_ID,
-                "message": msg,
-                "random_id": 0,
-                "group_id": GROUP_ID,
-                "access_token": GROUP_TOKEN,
-                "v": "5.131"
-            },
-            timeout=30
-        )
-
         logging.info(f"📱 Reddit пост {draft_id} сохранён")
         return "ok"
     except Exception as e:
@@ -100,7 +84,7 @@ def reddit_post():
 
 @app.route("/reddit-from-script", methods=["POST"])
 def reddit_from_script():
-    """Принимает пост от Tampermonkey-скрипта с уже загруженными фото. Только заголовок, без текста."""
+    """Принимает пост от Tampermonkey-скрипта с уже загруженными фото."""
     try:
         data = request.get_json(force=True)
         title = data.get("title", "")
@@ -123,7 +107,7 @@ def reddit_from_script():
         draft_id = str(int(datetime.now().timestamp()))
         drafts[draft_id] = {
             "title": translated_title,
-            "text": translated_title,  # только заголовок
+            "text": translated_title,
             "original_text": "",
             "original_title": title,
             "vk_attachments": attachments,
@@ -135,22 +119,6 @@ def reddit_from_script():
             "translated": True
         }
         save_drafts(drafts)
-
-        photo_msg = f"🖼 Фото: {len(attachments)} шт."
-        msg = f"📱 Новый пост со скрипта!\n📌 {translated_title[:100]}\n{photo_msg}\n\nЗаходи в раздел «📱 Reddit» для обработки."
-
-        req.get(
-            "https://api.vk.com/method/messages.send",
-            params={
-                "user_id": ADMIN_ID,
-                "message": msg,
-                "random_id": 0,
-                "group_id": GROUP_ID,
-                "access_token": GROUP_TOKEN,
-                "v": "5.131"
-            },
-            timeout=30
-        )
 
         logging.info(f"📱 Пост от скрипта {draft_id}: {len(attachments)} фото, заголовок: {len(translated_title)} символов")
         return "ok"
