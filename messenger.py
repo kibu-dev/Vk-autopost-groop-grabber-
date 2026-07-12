@@ -1,4 +1,4 @@
-# messenger.py — полностью (финальная версия с рабочими callback-меню)
+# messenger.py — полностью (финальная версия: Начать + инлайн-меню, без snackbar, без нижней клавиатуры)
 
 import re
 import time
@@ -34,9 +34,10 @@ def ts_to_irk_str(ts):
 
 
 def answer_callback(vk, event, text="", keyboard=None, snackbar=None):
-    """Отвечает на callback: редактирует то же сообщение."""
+    """Отвечает на callback: редактирует то же сообщение. Без snackbar по умолчанию."""
     try:
-        event_data = json.dumps({"type": "show_snackbar", "text": snackbar}) if snackbar else json.dumps({"type": "show_snackbar", "text": "✓"})
+        # Отвечаем на callback (обязательно, иначе кнопка зависнет)
+        event_data = json.dumps({"type": "show_snackbar", "text": snackbar}) if snackbar else None
         vk.messages.sendMessageEventAnswer(
             event_id=event.object["event_id"],
             user_id=event.object["user_id"],
@@ -726,7 +727,21 @@ def run_messenger():
 
                 t = text.lower()
                 if t in ["начать", "меню", "start"]:
-                    send_message(vk, user_id, "👋 Привет!", get_admin_main_keyboard() if is_admin else get_main_keyboard())
+                    # Показываем инлайн-меню и убираем обычную клавиатуру
+                    k = get_admin_main_keyboard() if is_admin else get_main_keyboard()
+                    vk.messages.send(
+                        user_id=user_id,
+                        message="👋 Привет! Выбери действие:",
+                        random_id=0,
+                        keyboard=k.get_keyboard()
+                    )
+                    # Убираем обычную клавиатуру снизу
+                    vk.messages.send(
+                        user_id=user_id,
+                        message=".",
+                        random_id=0,
+                        keyboard='{"buttons":[],"one_time":true}'
+                    )
 
         except Exception as e:
             logging.error(f"LongPoll error: {e}")
