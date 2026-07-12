@@ -15,7 +15,7 @@ from holidays import (
     get_holidays_config, save_holidays_config, generate_holidays_list,
     get_holiday_publish_time, create_holiday_post, generate_holiday_text
 )
-from reddit_handler import load_drafts, save_drafts, upload_photos_to_vk
+from reddit_handler import load_drafts, save_drafts
 
 waiting_support = set()
 selected_post = {}
