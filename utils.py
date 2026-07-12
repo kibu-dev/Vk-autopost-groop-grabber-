@@ -413,24 +413,28 @@ def get_group_name(vk, group_id):
 
 _last_bot_msg = {}
 
-def send_or_edit(vk, user_id, text, keyboard=None):
-    if user_id in _last_bot_msg:
+def send_or_edit(vk, user_id, text, keyboard=None, conversation_message_id=None):
+    """Редактирует сообщение если есть conversation_message_id, иначе новое."""
+    kb_dict = keyboard.get_keyboard() if keyboard else None
+    
+    if conversation_message_id:
         try:
             vk.messages.edit(
                 peer_id=user_id,
-                conversation_message_id=_last_bot_msg[user_id],
+                conversation_message_id=conversation_message_id,
                 message=text,
-                keyboard=keyboard.get_keyboard() if keyboard else None
+                keyboard=kb_dict
             )
-            return _last_bot_msg[user_id]
-        except Exception:
-            pass
-
+            _last_bot_msg[user_id] = conversation_message_id
+            return conversation_message_id
+        except Exception as e:
+            logging.error(f"send_or_edit edit error: {e}")
+    
     resp = vk.messages.send(
         user_id=user_id,
         message=text,
         random_id=0,
-        keyboard=keyboard.get_keyboard() if keyboard else None
+        keyboard=kb_dict
     )
     _last_bot_msg[user_id] = resp
     return resp
