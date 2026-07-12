@@ -1,4 +1,4 @@
-# keyboards.py — полностью (callback-кнопки, без спама в чате)
+# keyboards.py — полностью (со счётчиком Reddit)
 
 import json
 from datetime import datetime, timedelta
@@ -40,14 +40,15 @@ def get_cancel_keyboard():
     return k
 
 
-def get_admin_main_keyboard():
+def get_admin_main_keyboard(reddit_count=0):
     k = VkKeyboard(inline=True, one_time=False)
     k.add_callback_button("📅 Очередь постов", VkKeyboardColor.PRIMARY, payload={"cmd": "queue"})
     k.add_line()
     k.add_callback_button("👥 Группы-доноры", VkKeyboardColor.PRIMARY, payload={"cmd": "donors"})
     k.add_callback_button("🚫 Запрет-слова", VkKeyboardColor.NEGATIVE, payload={"cmd": "forbidden_words"})
     k.add_line()
-    k.add_callback_button("📱 Reddit", VkKeyboardColor.PRIMARY, payload={"cmd": "reddit"})
+    reddit_label = f"📱 Reddit (+{reddit_count})" if reddit_count > 0 else "📱 Reddit"
+    k.add_callback_button(reddit_label, VkKeyboardColor.PRIMARY, payload={"cmd": "reddit"})
     k.add_callback_button("📊 Статистика", VkKeyboardColor.SECONDARY, payload={"cmd": "stats"})
     k.add_line()
     k.add_callback_button("🔮 Гороскоп", VkKeyboardColor.PRIMARY, payload={"cmd": "horoscope"})
@@ -80,7 +81,6 @@ def get_reddit_post_keyboard(has_text, has_title=False):
 
 
 def get_reddit_date_keyboard():
-    """Инлайн-выбор даты публикации."""
     k = VkKeyboard(inline=True, one_time=False)
     now = datetime.now()
     days = 6
@@ -102,7 +102,6 @@ def get_reddit_date_keyboard():
 
 
 def get_reddit_range_keyboard():
-    """Выбор диапазона времени суток."""
     k = VkKeyboard(inline=True, one_time=False)
     k.add_callback_button("🌅 Утро (8-12)", VkKeyboardColor.PRIMARY, payload={"cmd": "pick_range", "start": 8, "end": 11})
     k.add_callback_button("☀️ День (12-17)", VkKeyboardColor.PRIMARY, payload={"cmd": "pick_range", "start": 12, "end": 16})
@@ -115,10 +114,8 @@ def get_reddit_range_keyboard():
 
 
 def get_reddit_hour_keyboard(busy_hours, start_hour, end_hour):
-    """Сетка часов для выбранного диапазона."""
     k = VkKeyboard(inline=True, one_time=False)
     busy = set(busy_hours or [])
-    
     added = 0
     for h in range(start_hour, end_hour + 1):
         color = VkKeyboardColor.NEGATIVE if h in busy else VkKeyboardColor.SECONDARY
@@ -127,7 +124,6 @@ def get_reddit_hour_keyboard(busy_hours, start_hour, end_hour):
         added += 1
         if added % 3 == 0 and h != end_hour:
             k.add_line()
-    
     k.add_line()
     k.add_callback_button("⬅️ К диапазонам", VkKeyboardColor.PRIMARY, payload={"cmd": "back_to_ranges"})
     k.add_callback_button("🔙 В админку", VkKeyboardColor.SECONDARY, payload={"cmd": "admin_menu"})
