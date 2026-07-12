@@ -1,3 +1,5 @@
+# utils.py — полностью
+
 import re
 import json
 import vk_api
@@ -125,17 +127,11 @@ def get_next_schedule_time(interval):
     scheduled = load_json(SCHEDULED_FILE, {"posts": []})["posts"]
     now = int(time.time())
     ts = now + interval
-    
-    # Собираем занятые слоты, которые ещё в будущем
     taken = {p["time"] for p in scheduled if p["time"] > now}
-    
-    # Ищем свободный слот, максимум 96 попыток
     for _ in range(96):
         if ts not in taken:
             return ts
         ts += interval
-    
-    # Если все попытки исчерпаны — возвращаем последний проверенный
     return now + interval
 
 def add_scheduled_post(publish_date, text, from_group):
@@ -415,10 +411,9 @@ def get_group_name(vk, group_id):
 
 # ─── Отправка сообщений ───
 
-_last_bot_msg = {}  # user_id -> message_id
+_last_bot_msg = {}
 
 def send_or_edit(vk, user_id, text, keyboard=None):
-    """Редактирует предыдущее сообщение бота, если возможно. Иначе — новое."""
     if user_id in _last_bot_msg:
         try:
             vk.messages.edit(
@@ -442,7 +437,6 @@ def send_or_edit(vk, user_id, text, keyboard=None):
 
 
 def send_message(vk, user_id, text, keyboard=None):
-    """Всегда новое сообщение. Сбрасывает кеш для send_or_edit."""
     _last_bot_msg.pop(user_id, None)
     try:
         resp = vk.messages.send(
