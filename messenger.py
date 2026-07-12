@@ -1,4 +1,4 @@
-# messenger.py — полностью (финальная версия: Начать + инлайн-меню, без snackbar, без нижней клавиатуры)
+# messenger.py — полностью (финал: без точки, без старой клавиатуры, без snackbar)
 
 import re
 import time
@@ -36,7 +36,6 @@ def ts_to_irk_str(ts):
 def answer_callback(vk, event, text="", keyboard=None, snackbar=None):
     """Отвечает на callback: редактирует то же сообщение. Без snackbar по умолчанию."""
     try:
-        # Отвечаем на callback (обязательно, иначе кнопка зависнет)
         event_data = json.dumps({"type": "show_snackbar", "text": snackbar}) if snackbar else None
         vk.messages.sendMessageEventAnswer(
             event_id=event.object["event_id"],
@@ -727,7 +726,6 @@ def run_messenger():
 
                 t = text.lower()
                 if t in ["начать", "меню", "start"]:
-                    # Показываем инлайн-меню и убираем обычную клавиатуру
                     k = get_admin_main_keyboard() if is_admin else get_main_keyboard()
                     vk.messages.send(
                         user_id=user_id,
@@ -735,12 +733,13 @@ def run_messenger():
                         random_id=0,
                         keyboard=k.get_keyboard()
                     )
-                    # Убираем обычную клавиатуру снизу
+                    # Скрываем старую клавиатуру (пустая, one_time)
                     vk.messages.send(
                         user_id=user_id,
-                        message=".",
+                        message="",
                         random_id=0,
-                        keyboard='{"buttons":[],"one_time":true}'
+                        keyboard='{"buttons":[],"one_time":true}',
+                        dont_parse_links=1
                     )
 
         except Exception as e:
