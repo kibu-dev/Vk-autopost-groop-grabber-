@@ -100,18 +100,16 @@ def reddit_post():
 
 @app.route("/reddit-from-script", methods=["POST"])
 def reddit_from_script():
-    """Принимает пост от Tampermonkey-скрипта с уже загруженными фото."""
+    """Принимает пост от Tampermonkey-скрипта с уже загруженными фото. Только заголовок, без текста."""
     try:
         data = request.get_json(force=True)
         title = data.get("title", "")
-        text = data.get("text", "")
         attachments = data.get("attachments", [])
         url = data.get("url", "")
         author = data.get("author", "")
         subreddit = data.get("subreddit", "")
 
         translated_title = title
-        translated_text = text
 
         if title and not is_russian(title):
             try:
@@ -121,24 +119,12 @@ def reddit_from_script():
             except:
                 pass
 
-        if text and not is_russian(text):
-            try:
-                tr = translate_text(text)
-                if tr:
-                    translated_text = tr
-            except:
-                pass
-
-        # Если текста нет или он совпадает с заголовком — берём заголовок
-        if not translated_text or translated_text.strip() == translated_title.strip():
-            translated_text = translated_title
-
         drafts = load_drafts()
         draft_id = str(int(datetime.now().timestamp()))
         drafts[draft_id] = {
             "title": translated_title,
-            "text": translated_text,
-            "original_text": text,
+            "text": translated_title,  # только заголовок
+            "original_text": "",
             "original_title": title,
             "vk_attachments": attachments,
             "url": url,
@@ -166,7 +152,7 @@ def reddit_from_script():
             timeout=30
         )
 
-        logging.info(f"📱 Пост от скрипта {draft_id}: {len(attachments)} фото, {len(translated_text)} символов")
+        logging.info(f"📱 Пост от скрипта {draft_id}: {len(attachments)} фото, заголовок: {len(translated_title)} символов")
         return "ok"
     except Exception as e:
         logging.error(f"Script error: {e}")
