@@ -23,13 +23,12 @@ admin_state = {}
 
 
 def format_reddit_preview(d, idx, total):
+    """Только текст (заголовок уже внутри text). Без дублей."""
     msg = f"📱 Пост {idx+1}/{total} | {d.get('subreddit', '')}\n\n"
-    if d.get('title'):
-        msg += f"📌 {d['title']}\n\n"
     if d.get('text'):
         msg += f"{d['text'][:500]}\n\n"
-    if d.get('images'):
-        msg += f"🖼 Фото: {len(d['images'])} шт.\n"
+    if d.get('vk_attachments'):
+        msg += f"🖼 Фото: {len(d['vk_attachments'])} шт.\n"
     if d.get('url'):
         msg += f"🔗 {d['url']}"
     return msg
@@ -66,11 +65,6 @@ def upload_photo_from_message(vk, user_id, message_id):
 
 
 def _handle_suggested_post(vk, post: dict):
-    """
-    Обрабатывает предложенный пост (WALL_POST_NEW с post_type='suggest').
-    Фото берутся напрямую из объекта поста (с access_key) — без перезалива.
-    После публикации отложки предложка удаляется.
-    """
     post_id = post.get("id")
     from_id = post.get("from_id") or post.get("signer_id") or 0
     text = post.get("text", "")
@@ -116,7 +110,6 @@ def _handle_suggested_post(vk, post: dict):
             logging.info(f"✅ Предложка #{post_id} → отложен на {when} "
                          f"({'фото: ' + str(len(new_attachments)) if new_attachments else 'без фото'})")
 
-            # Отклоняем оригинальную предложку
             try:
                 vk.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
                 logging.info(f"🗑️ Предложка #{post_id} отклонена из очереди предложенных")
@@ -158,7 +151,6 @@ def run_messenger():
     while True:
         try:
             for event in longpoll.listen():
-                # === ПРЕДЛОЖЕННЫЙ ПОСТ ===
                 if event.type == VkBotEventType.WALL_POST_NEW:
                     post = event.object
                     if post.get("post_type") == "suggest":
@@ -248,7 +240,7 @@ def run_messenger():
                         elif t == "📷 только фото":
                             draft_id = ids[idx]
                             d = pending[draft_id]
-                            if not d.get('images'):
+                            if not d.get('vk_attachments'):
                                 send_message(vk, user_id, "❌ Нет фото в этом посте.")
                                 continue
                             admin_state[user_id] = {"mode": "reddit_pick_date", "draft_id": draft_id, "photo_only": True}
@@ -461,6 +453,7 @@ def run_messenger():
                         if draft_id in drafts:
                             if t != "-":
                                 drafts[draft_id]["title"] = text
+                                drafts[draft_id]["text"] = text
                             save_drafts(drafts)
                             admin_state[user_id] = {"mode": "reddit_edit_text", "draft_id": draft_id}
                             send_message(vk, user_id, "✏️ Введите новый текст (или '-' чтобы оставить):", get_cancel_keyboard())
@@ -864,43 +857,24 @@ def run_messenger():
 
 
 def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
-    """Публикует Reddit-черновик в отложку. Использует vk_attachments из черновика если есть."""
+    """Публикует Reddit-черновик в отложку. Использует vk_attachments из черновика."""
     drafts = load_drafts()
     d = drafts.get(draft_id)
     if not d:
         send_message(vk, user_id, "❌ Черновик не найден.", get_admin_main_keyboard())
         return
 
-    # Используем готовые vk_attachments из черновика
     attachments = d.get("vk_attachments", [])
     if attachments:
         logging.info(f"📸 Используем {len(attachments)} готовых VK-вложений из черновика")
-    elif d.get("images"):
-        # Резервный путь: загружаем сейчас
-        logging.info(f"📸 vk_attachments пусты, заливаю {len(d['images'])} фото сейчас...")
-        send_or_edit(vk, user_id, "⏳ Загружаю фото...")
-        try:
-            attachments, errors = upload_photos_to_vk(d.get("images", [])[:10])
-            if errors:
-                logging.warning(f"📸 Ошибки загрузки фото: {errors}")
-            logging.info(f"📸 Загружено {len(attachments)} фото")
-        except Exception as e:
-            logging.error(f"📸 Ошибка загрузки фото: {e}")
-            attachments = []
 
     if photo_only:
         if not attachments:
-            send_message(vk, user_id, "❌ Не удалось загрузить фото.", get_admin_main_keyboard())
+            send_message(vk, user_id, "❌ Нет фото для публикации.", get_admin_main_keyboard())
             return
-        post_text = d.get("title", "")
+        post_text = ""
     else:
         post_text = d.get("text", "")
-        if d.get("title") and not post_text:
-            post_text = d["title"]
-        elif d.get("title"):
-            post_text = f"{d['title']}\n\n{post_text}"
-        if not post_text and attachments:
-            post_text = d.get("title", "")
 
     logging.info(f"📝 Текст поста: {post_text[:100] if post_text else 'нет'}")
     logging.info(f"📎 Вложения: {attachments}")
@@ -934,10 +908,9 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
         del drafts[draft_id]
         save_drafts(drafts)
         when = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
-        total_images = len(d.get("images", []))
         msg = f"✅ Запланировано на {when}!"
         if attachments:
-            msg += f" 📸 {len(attachments)}/{total_images} фото"
+            msg += f" 📸 {len(attachments)} фото"
         send_message(vk, user_id, msg, get_admin_main_keyboard())
     else:
         send_message(vk, user_id, "❌ Ошибка публикации.", get_admin_main_keyboard())
