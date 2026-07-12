@@ -1,4 +1,4 @@
-# messenger.py — полностью (финал: без точки, без старой клавиатуры, без snackbar)
+# messenger.py — полностью (Иркутское время + фото в preview)
 
 import re
 import time
@@ -7,7 +7,7 @@ import json
 import vk_api
 import requests as req
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from config import *
 from utils import *
 from keyboards import *
@@ -22,15 +22,17 @@ waiting_support = set()
 selected_post = {}
 admin_state = {}
 
+IRK_TZ = timezone(timedelta(hours=8))
+
 
 def now_irk():
     """Текущее время в Иркутске (UTC+8)."""
-    return datetime.now() + timedelta(hours=TIMEZONE_OFFSET - 3)
+    return datetime.now(IRK_TZ)
 
 
 def ts_to_irk_str(ts):
     """Timestamp → строка Иркутского времени."""
-    return datetime.fromtimestamp(ts).strftime('%d.%m %H:%M')
+    return datetime.fromtimestamp(ts, IRK_TZ).strftime('%d.%m %H:%M')
 
 
 def answer_callback(vk, event, text="", keyboard=None, snackbar=None):
@@ -61,7 +63,7 @@ def format_reddit_preview(d, idx, total):
     return msg
 
 
-def show_reddit_draft(vk, user_id, drafts, ids, idx):
+def show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id=None):
     pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
     ids[:] = list(pending.keys())
     if not ids:
@@ -72,10 +74,15 @@ def show_reddit_draft(vk, user_id, drafts, ids, idx):
     d = pending[ids[idx]]
     msg = format_reddit_preview(d, idx, len(ids))
     admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+    
+    # Прикрепляем фото к сообщению
+    attachments = d.get("vk_attachments", [])
+    attachment_str = ",".join(attachments) if attachments else None
+    
     send_or_edit(vk, user_id, msg, get_reddit_post_keyboard(
         bool(d.get('text', '').strip()),
         bool(d.get('title', '').strip())
-    ))
+    ), conv_msg_id, attachment_str)
 
 
 def upload_photo_from_message(vk, user_id, message_id):
@@ -164,6 +171,7 @@ def run_messenger():
                     cmd = payload.get("cmd", "")
                     user_id = event.object["user_id"]
                     is_admin = (user_id == ADMIN_ID)
+                    conv_msg_id = event.object.get("conversation_message_id")
 
                     if cmd == "queue":
                         sched = get_scheduled_posts()
@@ -227,7 +235,7 @@ def run_messenger():
                         d = pending[ids[0]]
                         msg = format_reddit_preview(d, 0, len(ids))
                         admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": 0}
-                        answer_callback(vk, event, msg, get_reddit_post_keyboard(bool(d.get('text', '').strip()), bool(d.get('title', '').strip())))
+                        show_reddit_draft(vk, user_id, load_drafts(), ids, 0, conv_msg_id)
 
                     elif cmd == "reddit_prev":
                         state = admin_state.get(user_id, {})
@@ -235,7 +243,7 @@ def run_messenger():
                             drafts = load_drafts()
                             ids = state.get("ids", [])
                             idx = (state.get("index", 0) - 1) % len(ids) if ids else 0
-                            show_reddit_draft(vk, user_id, drafts, ids, idx)
+                            show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id)
 
                     elif cmd == "reddit_next":
                         state = admin_state.get(user_id, {})
@@ -243,7 +251,7 @@ def run_messenger():
                             drafts = load_drafts()
                             ids = state.get("ids", [])
                             idx = (state.get("index", 0) + 1) % len(ids) if ids else 0
-                            show_reddit_draft(vk, user_id, drafts, ids, idx)
+                            show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id)
 
                     elif cmd == "reddit_publish":
                         state = admin_state.get(user_id, {})
@@ -275,7 +283,7 @@ def run_messenger():
                                 d["text"] = translate_text(d.get("original_text", d.get("text", ""))) or d["text"]
                                 d["translated"] = True
                                 save_drafts(drafts)
-                            show_reddit_draft(vk, user_id, drafts, ids, idx)
+                            show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id)
 
                     elif cmd == "reddit_rewrite":
                         state = admin_state.get(user_id, {})
@@ -288,7 +296,7 @@ def run_messenger():
                                 if rewritten:
                                     drafts[ids[idx]]["text"] = rewritten
                                     save_drafts(drafts)
-                            show_reddit_draft(vk, user_id, drafts, ids, idx)
+                            show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id)
 
                     elif cmd == "reddit_edit":
                         state = admin_state.get(user_id, {})
@@ -308,7 +316,7 @@ def run_messenger():
                             if ids and ids[idx] in drafts:
                                 del drafts[ids[idx]]
                                 save_drafts(drafts)
-                            show_reddit_draft(vk, user_id, drafts, ids, idx)
+                            show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id)
 
                     elif cmd == "pick_date":
                         state = admin_state.get(user_id, {})
@@ -339,7 +347,7 @@ def run_messenger():
                         date_str = state.get("date", "")
                         hour = payload["hour"]
                         try:
-                            base_dt = datetime.strptime(f"{date_str} {hour:02d}:00", "%Y-%m-%d %H:%M")
+                            base_dt = datetime.strptime(f"{date_str} {hour:02d}:00", "%Y-%m-%d %H:%M").replace(tzinfo=IRK_TZ)
                             pub_time = int(base_dt.timestamp())
                             if pub_time <= int(time.time()) + 60:
                                 answer_callback(vk, event, "⏰ Это время уже прошло.", snackbar="Время прошло")
@@ -732,14 +740,6 @@ def run_messenger():
                         message="👋 Привет! Выбери действие:",
                         random_id=0,
                         keyboard=k.get_keyboard()
-                    )
-                    # Скрываем старую клавиатуру (пустая, one_time)
-                    vk.messages.send(
-                        user_id=user_id,
-                        message="",
-                        random_id=0,
-                        keyboard='{"buttons":[],"one_time":true}',
-                        dont_parse_links=1
                     )
 
         except Exception as e:
