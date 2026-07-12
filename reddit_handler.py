@@ -129,6 +129,10 @@ def reddit_from_script():
             except:
                 pass
 
+        # Если текста нет или он совпадает с заголовком — берём заголовок
+        if not translated_text or translated_text.strip() == translated_title.strip():
+            translated_text = translated_title
+
         drafts = load_drafts()
         draft_id = str(int(datetime.now().timestamp()))
         drafts[draft_id] = {
