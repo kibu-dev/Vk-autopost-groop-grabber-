@@ -1,4 +1,4 @@
-# messenger.py — полностью (v5.199 + Иркутское время везде)
+# messenger.py — полностью (финальная версия с рабочими callback-меню)
 
 import re
 import time
@@ -25,7 +25,7 @@ admin_state = {}
 
 def now_irk():
     """Текущее время в Иркутске (UTC+8)."""
-    return datetime.now() + timedelta(hours=TIMEZONE_OFFSET - 3)  # сервер UTC+3, поправка до UTC+8
+    return datetime.now() + timedelta(hours=TIMEZONE_OFFSET - 3)
 
 
 def ts_to_irk_str(ts):
@@ -33,24 +33,22 @@ def ts_to_irk_str(ts):
     return datetime.fromtimestamp(ts).strftime('%d.%m %H:%M')
 
 
-# ========== ХЕЛПЕРЫ ДЛЯ CALLBACK-ОТВЕТОВ ==========
-
 def answer_callback(vk, event, text="", keyboard=None, snackbar=None):
+    """Отвечает на callback: редактирует то же сообщение."""
     try:
-        if snackbar:
-            vk.messages.sendMessageEventAnswer(
-                event_id=event.object["event_id"],
-                user_id=event.object["user_id"],
-                peer_id=event.object["peer_id"],
-                event_data=json.dumps({"type": "show_snackbar", "text": snackbar})
-            )
+        event_data = json.dumps({"type": "show_snackbar", "text": snackbar}) if snackbar else json.dumps({"type": "show_snackbar", "text": "✓"})
+        vk.messages.sendMessageEventAnswer(
+            event_id=event.object["event_id"],
+            user_id=event.object["user_id"],
+            peer_id=event.object["peer_id"],
+            event_data=event_data
+        )
         if text or keyboard:
-            send_or_edit(vk, event.object["user_id"], text, keyboard)
+            conv_msg_id = event.object.get("conversation_message_id")
+            send_or_edit(vk, event.object["user_id"], text, keyboard, conv_msg_id)
     except Exception as e:
         logging.error(f"Callback answer error: {e}")
 
-
-# ========== ФОРМАТИРОВАНИЕ REDDIT ==========
 
 def format_reddit_preview(d, idx, total):
     msg = f"📱 Пост {idx+1}/{total} | {d.get('subreddit', '')}\n\n"
@@ -92,8 +90,6 @@ def upload_photo_from_message(vk, user_id, message_id):
         logging.error(f"Ошибка загрузки фото: {e}")
     return None
 
-
-# ========== ПРЕДЛОЖКА ==========
 
 def _handle_suggested_post(vk, post: dict):
     post_id = post.get("id")
@@ -151,8 +147,6 @@ def _handle_suggested_post(vk, post: dict):
             logging.error(f"❌ Ошибка публикации предложки #{post_id}: {e}")
             return
 
-
-# ========== ОСНОВНОЙ ЦИКЛ ==========
 
 def run_messenger():
     vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.199")
