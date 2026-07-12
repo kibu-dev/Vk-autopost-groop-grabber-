@@ -1,12 +1,11 @@
+# ai_poster.py — полностью (возвращаем g4f)
+
 import time
 import logging
-import requests
+from g4f.client import Client
 from deep_translator import GoogleTranslator
 
 PROMPT_FILE = "prompt.txt"
-
-# Бесплатный ChatGPT через обход (g4f больше не используется)
-API_URL = "https://api.chatanywhere.tech/v1/chat/completions"
 
 def ai_log(message):
     logging.info(f"AI: {message}")
@@ -19,35 +18,21 @@ def load_prompt():
         return "Напиши пост на тему: {text}"
 
 def generate_text(prompt, max_tokens=1500):
-    """Генерация текста через бесплатное API."""
+    """Генерация текста через g4f"""
     try:
-        ai_log(f"AI запрос: {prompt[:100]}")
-        time.sleep(1)
-
-        headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0"
-        }
-        payload = {
-            "model": "gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-            "temperature": 0.8,
-        }
-
-        response = requests.post(API_URL, json=payload, headers=headers, timeout=60)
-        data = response.json()
-
-        if "choices" in data:
-            result = data["choices"][0]["message"]["content"]
-            ai_log(f"AI ответ: {result[:200] if result else 'нет'}...")
-            return result
-
-        ai_log(f"AI ошибка API: {data}")
-        return None
-
+        ai_log(f"G4F запрос: {prompt[:100]}")
+        time.sleep(2)
+        client = Client()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens
+        )
+        result = response.choices[0].message.content
+        ai_log(f"G4F ответ: {result[:200] if result else 'нет'}...")
+        return result
     except Exception as e:
-        ai_log(f"AI ошибка: {e}")
+        ai_log(f"G4F ошибка: {e}")
         return None
 
 def generate_variants(text):
@@ -57,14 +42,11 @@ def generate_variants(text):
 def parse_variants(result):
     if not result or len(result.strip()) <= 20:
         return []
-
     import re
     parts = re.split(r'(?:Вариант|Variant)\s*\d+[.:]\s*', result)
     parts = [p.strip() for p in parts if len(p.strip()) > 20]
-
     if len(parts) >= 2:
         return parts
-
     return [result.strip()]
 
 def translate_text(text, target='ru'):
