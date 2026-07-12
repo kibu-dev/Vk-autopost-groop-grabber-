@@ -1,4 +1,4 @@
-# utils.py — полностью
+# utils.py — полностью (финальная версия)
 
 import re
 import json
@@ -413,7 +413,7 @@ def get_group_name(vk, group_id):
 
 _last_bot_msg = {}
 
-def send_or_edit(vk, user_id, text, keyboard=None, conversation_message_id=None):
+def send_or_edit(vk, user_id, text, keyboard=None, conversation_message_id=None, attachment=None):
     """Редактирует сообщение если есть conversation_message_id, иначе новое."""
     kb_dict = keyboard.get_keyboard() if keyboard else None
     
@@ -423,7 +423,8 @@ def send_or_edit(vk, user_id, text, keyboard=None, conversation_message_id=None)
                 peer_id=user_id,
                 conversation_message_id=conversation_message_id,
                 message=text,
-                keyboard=kb_dict
+                keyboard=kb_dict,
+                attachment=attachment
             )
             _last_bot_msg[user_id] = conversation_message_id
             return conversation_message_id
@@ -434,7 +435,8 @@ def send_or_edit(vk, user_id, text, keyboard=None, conversation_message_id=None)
         user_id=user_id,
         message=text,
         random_id=0,
-        keyboard=kb_dict
+        keyboard=kb_dict,
+        attachment=attachment
     )
     _last_bot_msg[user_id] = resp
     return resp
@@ -491,7 +493,7 @@ def moderate_post(vk_user, post_id, uid, text, attachments_str, reason, post_typ
     add_to_moderation(post_id, post_type, uid, text, attachments_str or "", reason)
     if ADMIN_ID:
         try:
-            vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
+            vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.199").get_api()
             from keyboards import get_moderation_keyboard
             kb = get_moderation_keyboard(post_id)
             try:
