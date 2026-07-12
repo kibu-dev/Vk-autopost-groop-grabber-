@@ -1,8 +1,9 @@
-# messenger.py — полностью (callback-версия, без спама в чате)
+# messenger.py — полностью (v5.199 + Иркутское время везде)
 
 import re
 import time
 import logging
+import json
 import vk_api
 import requests as req
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
@@ -22,10 +23,19 @@ selected_post = {}
 admin_state = {}
 
 
+def now_irk():
+    """Текущее время в Иркутске (UTC+8)."""
+    return datetime.now() + timedelta(hours=TIMEZONE_OFFSET - 3)  # сервер UTC+3, поправка до UTC+8
+
+
+def ts_to_irk_str(ts):
+    """Timestamp → строка Иркутского времени."""
+    return datetime.fromtimestamp(ts).strftime('%d.%m %H:%M')
+
+
 # ========== ХЕЛПЕРЫ ДЛЯ CALLBACK-ОТВЕТОВ ==========
 
 def answer_callback(vk, event, text="", keyboard=None, snackbar=None):
-    """Отвечает на callback: показывает snackbar и/или редактирует сообщение."""
     try:
         if snackbar:
             vk.messages.sendMessageEventAnswer(
@@ -125,8 +135,7 @@ def _handle_suggested_post(vk, post: dict):
             kwargs["publish_date"] = slot
             vk.wall.post(**kwargs)
             add_scheduled_post(slot, final_text[:200], from_id)
-            when = datetime.fromtimestamp(slot).strftime("%d.%m %H:%M")
-            logging.info(f"✅ Предложка #{post_id} → отложен на {when} (фото: {len(new_attachments)})")
+            logging.info(f"✅ Предложка #{post_id} → отложен на {ts_to_irk_str(slot)} (фото: {len(new_attachments)})")
             try:
                 vk.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
             except:
@@ -146,7 +155,7 @@ def _handle_suggested_post(vk, post: dict):
 # ========== ОСНОВНОЙ ЦИКЛ ==========
 
 def run_messenger():
-    vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131")
+    vk_session = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.199")
     vk = vk_session.get_api()
     longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID, wait=25)
     logging.info("🤖 ЛС бот запущен")
@@ -155,18 +164,17 @@ def run_messenger():
         try:
             for event in longpoll.listen():
 
-                # === CALLBACK ОТ КЛАВИАТУРЫ (не спамит в чат) ===
+                # === CALLBACK ОТ КЛАВИАТУРЫ ===
                 if event.type == VkBotEventType.MESSAGE_EVENT:
                     payload = event.object.get("payload", {})
                     cmd = payload.get("cmd", "")
                     user_id = event.object["user_id"]
                     is_admin = (user_id == ADMIN_ID)
 
-                    # --- Админское меню ---
                     if cmd == "queue":
                         sched = get_scheduled_posts()
                         msg = "📅 Запланированные:\n\n" + "\n".join(
-                            f"• {datetime.fromtimestamp(p['time']).strftime('%d.%m %H:%M')} — {p['text'][:50]}..."
+                            f"• {ts_to_irk_str(p['time'])} — {p['text'][:50]}..."
                             for p in sched[:10]
                         ) if sched else "📭 Пусто."
                         answer_callback(vk, event, msg, get_scheduled_keyboard())
@@ -195,7 +203,6 @@ def run_messenger():
                     elif cmd == "user_menu":
                         answer_callback(vk, event, "Меню:", get_main_keyboard())
 
-                    # --- Доноры ---
                     elif cmd == "add_donor":
                         admin_state[user_id] = {"mode": "add_donor"}
                         answer_callback(vk, event, "Введите ID/ссылку:", get_back_admin_keyboard())
@@ -208,7 +215,6 @@ def run_messenger():
                         remove_donor_group(payload["group_id"])
                         answer_callback(vk, event, f"✅ Удалена!", get_donor_groups_keyboard(), "Группа удалена")
 
-                    # --- Запрет-слова ---
                     elif cmd == "add_word":
                         admin_state[user_id] = {"mode": "add_word"}
                         answer_callback(vk, event, "Введите слово:", get_back_admin_keyboard())
@@ -217,7 +223,6 @@ def run_messenger():
                         admin_state[user_id] = {"mode": "del_word"}
                         answer_callback(vk, event, "Введите слово:", get_back_admin_keyboard())
 
-                    # --- Reddit ---
                     elif cmd == "reddit":
                         drafts = load_drafts()
                         pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
@@ -311,7 +316,6 @@ def run_messenger():
                                 save_drafts(drafts)
                             show_reddit_draft(vk, user_id, drafts, ids, idx)
 
-                    # --- Выбор даты/времени ---
                     elif cmd == "pick_date":
                         state = admin_state.get(user_id, {})
                         state["mode"] = "reddit_pick_range"
@@ -351,7 +355,6 @@ def run_messenger():
                         except:
                             answer_callback(vk, event, "❌ Ошибка даты.", get_admin_main_keyboard())
 
-                    # --- AI ---
                     elif cmd == "ai_poster":
                         answer_callback(vk, event, "🤖 AI-постер:", get_ai_keyboard())
 
@@ -389,7 +392,6 @@ def run_messenger():
                         admin_state.pop(user_id, None)
                         answer_callback(vk, event, "❌ Отменено.", get_admin_main_keyboard())
 
-                    # --- Гороскоп ---
                     elif cmd == "horoscope":
                         config = load_json("horoscope_config.json", {})
                         next_m = get_horoscope_next_monday()
@@ -429,7 +431,6 @@ def run_messenger():
                         else:
                             answer_callback(vk, event, "❌ Ошибка.", get_horoscope_keyboard())
 
-                    # --- Праздники ---
                     elif cmd == "holidays":
                         config = get_holidays_config()
                         if not config.get("holidays_list"):
@@ -502,7 +503,6 @@ def run_messenger():
                             save_holidays_config(config)
                             answer_callback(vk, event, f"✅ Обновлено! ({len(holidays)})", get_holidays_keyboard(), "Обновлено")
 
-                    # --- Пользовательские ---
                     elif cmd == "suggest_post":
                         if is_admin:
                             answer_callback(vk, event, "Ты админ, используй AI или Reddit.", get_admin_main_keyboard())
@@ -559,7 +559,7 @@ def run_messenger():
                         _handle_suggested_post(vk, post)
                     continue
 
-                # === ОБЫЧНЫЕ СООБЩЕНИЯ (только текст от юзеров) ===
+                # === ОБЫЧНЫЕ СООБЩЕНИЯ ===
                 if event.type != VkBotEventType.MESSAGE_NEW:
                     continue
 
@@ -574,7 +574,6 @@ def run_messenger():
 
                 logging.info(f"MSG: '{text[:80]}' | ADMIN: {is_admin} | STATE: {admin_state.get(user_id, {}).get('mode', 'none')}")
 
-                # --- Обработка текстовых команд (для режимов ожидания ввода) ---
                 if user_id in admin_state:
                     state = admin_state[user_id]
                     mode = state.get("mode")
@@ -584,12 +583,11 @@ def run_messenger():
                             admin_state.pop(user_id, None)
                             send_message(vk, user_id, "❌ Отменено.", get_main_keyboard())
                             continue
-                        post_data = {"post_id": message_id, "from_id": user_id, "text": text, "time": int(datetime.now().timestamp())}
+                        post_data = {"post_id": message_id, "from_id": user_id, "text": text, "time": int(now_irk().timestamp())}
                         admin_state.pop(user_id, None)
                         slot = schedule_user_post(vk, post_data)
                         if slot:
-                            when = datetime.fromtimestamp(slot).strftime("%H:%M")
-                            send_message(vk, user_id, f"✅ Пост принят! Выйдет в {when}.", get_main_keyboard())
+                            send_message(vk, user_id, f"✅ Пост принят! Выйдет в {ts_to_irk_str(slot)}.", get_main_keyboard())
                         else:
                             send_message(vk, user_id, "❌ Не удалось.", get_main_keyboard())
                         continue
@@ -723,7 +721,6 @@ def run_messenger():
                         send_or_edit(vk, user_id, f"📝 Сохранено.", get_holiday_confirm_keyboard())
                         continue
 
-                # --- Поддержка ---
                 if user_id in waiting_support:
                     waiting_support.discard(user_id)
                     if text.lower() not in ["🔙 отмена", "/cancel"] and ADMIN_ID:
@@ -733,7 +730,6 @@ def run_messenger():
                         send_message(vk, user_id, "Отменено.", get_main_keyboard())
                     continue
 
-                # --- Стартовые команды ---
                 t = text.lower()
                 if t in ["начать", "меню", "start"]:
                     send_message(vk, user_id, "👋 Привет!", get_admin_main_keyboard() if is_admin else get_main_keyboard())
@@ -742,8 +738,6 @@ def run_messenger():
             logging.error(f"LongPoll error: {e}")
             time.sleep(5)
 
-
-# ========== ПУБЛИКАЦИИ ==========
 
 def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
     drafts = load_drafts()
@@ -774,8 +768,7 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
         add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото из Reddit", 0)
         del drafts[draft_id]
         save_drafts(drafts)
-        when = datetime.fromtimestamp(pub_time).strftime("%d.%m %H:%M")
-        msg = f"✅ Запланировано на {when}!"
+        msg = f"✅ Запланировано на {ts_to_irk_str(pub_time)}!"
         if attachments:
             msg += f" 📸 {len(attachments)} фото"
         send_message(vk, user_id, msg, get_admin_main_keyboard())
