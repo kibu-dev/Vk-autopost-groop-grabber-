@@ -1,4 +1,4 @@
-# keyboards.py — полностью (со счётчиком Reddit)
+# keyboards.py — полностью (обновлённое меню для пользователей)
 
 import json
 from datetime import datetime, timedelta
@@ -6,11 +6,8 @@ from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 
 def get_main_keyboard():
+    """Клавиатура для обычных пользователей — только поддержка."""
     k = VkKeyboard(inline=True, one_time=False)
-    k.add_callback_button("📝 Предложить пост", VkKeyboardColor.POSITIVE, payload={"cmd": "suggest_post"})
-    k.add_line()
-    k.add_callback_button("🗑 Удалить мой пост", VkKeyboardColor.NEGATIVE, payload={"cmd": "delete_my_post"})
-    k.add_line()
     k.add_callback_button("🆘 Написать в поддержку", VkKeyboardColor.SECONDARY, payload={"cmd": "support"})
     return k
 
