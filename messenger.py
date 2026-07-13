@@ -1,4 +1,4 @@
-# messenger.py — полностью (финал: snackbar при выборе времени + возврат в Reddit-меню)
+# messenger.py — полностью (с логами, исправлен add_donor, snackbar, возврат в Reddit)
 
 import re
 import time
@@ -173,7 +173,9 @@ def run_messenger():
                     is_admin = (user_id == ADMIN_ID)
                     conv_msg_id = event.object.get("conversation_message_id")
 
+                    # ==================== АДМИН-МЕНЮ ====================
                     if cmd == "queue":
+                        logging.info(f"📅 [CALLBACK] queue от {user_id}")
                         sched = get_scheduled_posts()
                         msg = "📅 Запланированные:\n\n" + "\n".join(
                             f"• {ts_to_irk_str(p['time'])} — {p['text'][:50]}..."
@@ -182,7 +184,9 @@ def run_messenger():
                         answer_callback(vk, event, msg, get_scheduled_keyboard())
 
                     elif cmd == "donors":
+                        logging.info(f"👥 [CALLBACK] donors от {user_id}")
                         donors = get_donor_groups()
+                        logging.info(f"👥 Список доноров: {donors}")
                         msg = "Группы-доноры:\n" + "\n".join(f"• {g} — {get_group_name(vk, g)}" for g in donors) if donors else "📭 Список пуст."
                         answer_callback(vk, event, msg, get_donor_groups_keyboard())
 
@@ -199,6 +203,7 @@ def run_messenger():
                         answer_callback(vk, event, msg, get_admin_main_keyboard())
 
                     elif cmd == "admin_menu":
+                        logging.info(f"🔙 [CALLBACK] admin_menu от {user_id}")
                         admin_state.pop(user_id, None)
                         drafts = load_drafts()
                         reddit_count = len([v for v in drafts.values() if v.get("status") == "pending"])
@@ -207,7 +212,9 @@ def run_messenger():
                     elif cmd == "user_menu":
                         answer_callback(vk, event, "Меню:", get_main_keyboard())
 
+                    # ==================== ДОНОРЫ / СЛОВА ====================
                     elif cmd == "add_donor":
+                        logging.info(f"➕ [CALLBACK] add_donor от {user_id}")
                         admin_state[user_id] = {"mode": "add_donor"}
                         answer_callback(vk, event, "Введите ID/ссылку:", get_back_admin_keyboard())
 
@@ -216,7 +223,9 @@ def run_messenger():
                         answer_callback(vk, event, "Выберите:" if donors else "📭 Пусто.", get_remove_donor_keyboard(donors, vk) if donors else get_donor_groups_keyboard())
 
                     elif cmd == "remove_donor":
-                        remove_donor_group(payload["group_id"])
+                        gid = payload["group_id"]
+                        logging.info(f"➖ [CALLBACK] remove_donor {gid} от {user_id}")
+                        remove_donor_group(gid)
                         answer_callback(vk, event, f"✅ Удалена!", get_donor_groups_keyboard(), "Группа удалена")
 
                     elif cmd == "add_word":
@@ -227,9 +236,12 @@ def run_messenger():
                         admin_state[user_id] = {"mode": "del_word"}
                         answer_callback(vk, event, "Введите слово:", get_back_admin_keyboard())
 
+                    # ==================== REDDIT ====================
                     elif cmd == "reddit":
+                        logging.info(f"📱 [CALLBACK] reddit от {user_id}")
                         drafts = load_drafts()
                         pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                        logging.info(f"📱 Черновиков Reddit: {len(pending)}")
                         if not pending:
                             answer_callback(vk, event, "📱 Нет постов.", get_admin_main_keyboard())
                             continue
@@ -360,6 +372,7 @@ def run_messenger():
                                 answer_callback(vk, event, "⏰ Это время уже прошло.", snackbar="Время прошло")
                                 continue
 
+                            logging.info(f"📅 Публикация Reddit черновика {state['draft_id']} на {ts_to_irk_str(pub_time)}")
                             publish_reddit_draft(vk, user_id, state["draft_id"], pub_time, state.get("photo_only", False))
 
                             drafts = load_drafts()
@@ -633,8 +646,16 @@ def run_messenger():
 
                     if mode == "add_donor":
                         gid = resolve_group_id(vk, text.strip())
+                        logging.info(f"🔍 add_donor: '{text.strip()}' → {gid}")
+                        if gid:
+                            add_donor_group(gid)
+                            current = get_donor_groups()
+                            logging.info(f"📝 Список доноров после добавления: {current}")
+                            send_or_edit(vk, user_id, f"✅ [{get_group_name(vk, gid)}] добавлена! (всего: {len(current)})", get_donor_groups_keyboard())
+                        else:
+                            logging.info(f"❌ Не удалось найти группу: {text.strip()}")
+                            send_or_edit(vk, user_id, "❌ Не найдена.", get_back_admin_keyboard())
                         admin_state.pop(user_id, None)
-                        send_or_edit(vk, user_id, f"✅ [{get_group_name(vk, gid)}] добавлена!" if gid else "❌ Не найдена.", get_donor_groups_keyboard())
                         continue
 
                     if mode == "add_word":
