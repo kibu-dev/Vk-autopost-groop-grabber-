@@ -123,7 +123,6 @@ def get_next_free_hour():
         hour += timedelta(hours=1)
 
 def get_next_schedule_time(interval):
-    """Ближайший свободный слот с шагом `interval` секунд."""
     scheduled = load_json(SCHEDULED_FILE, {"posts": []})["posts"]
     now = int(time.time())
     ts = now + interval
@@ -374,7 +373,6 @@ def contains_anonymous(text):
     return any(kw in text.lower() for kw in ["анон", "анонимно", "аноним", "#анон", "#анонимно", "#аноним"])
 
 def build_attachments(post):
-    """Собирает строку вложений из объекта поста VK."""
     att = []
     for a in post.get("attachments", []):
         t = a["type"]
@@ -414,7 +412,6 @@ def get_group_name(vk, group_id):
 _last_bot_msg = {}
 
 def send_or_edit(vk, user_id, text, keyboard=None, conversation_message_id=None, attachment=None):
-    """Редактирует сообщение если есть conversation_message_id, иначе новое."""
     kb_dict = keyboard.get_keyboard() if keyboard else None
     
     if conversation_message_id:
