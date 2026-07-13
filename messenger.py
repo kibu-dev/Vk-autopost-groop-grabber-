@@ -1,4 +1,4 @@
-# messenger.py — полностью (финальная версия)
+# messenger.py — полностью (финальная версия: + ссылки на фото для гороскопа/праздников)
 
 import re
 import time
@@ -89,6 +89,14 @@ def upload_photo_from_message(vk, user_id, message_id):
                     return upload_photo_to_group(vk, att["photo"])
     except Exception as e:
         logging.error(f"Ошибка загрузки фото: {e}")
+    return None
+
+
+def _extract_photo_from_text(text):
+    """Извлекает photo-XXX_YYY из текста или ссылки VK."""
+    match = re.search(r'photo(-?\d+_\d+)', text)
+    if match:
+        return f"photo{match.group(1)}"
     return None
 
 
@@ -404,6 +412,8 @@ def run_messenger():
                         next_m = get_horoscope_next_monday()
                         next_str = datetime.fromisoformat(next_m).strftime("%d.%m %H:%M") if next_m else "не запланирован"
                         msg = f"🔮 Гороскоп: {'Включен ✅' if get_horoscope_enabled() else 'Выключен ❌'}\nСледующий: {next_str}"
+                        if config.get("photo_id"):
+                            msg += f"\n🖼 Фото: {config['photo_id']}"
                         if config.get("text"):
                             msg += f"\n\n📝 Текст:\n{config['text'][:2500]}"
                         answer_callback(vk, event, msg, get_horoscope_keyboard())
@@ -418,7 +428,7 @@ def run_messenger():
 
                     elif cmd == "horoscope_photo":
                         admin_state[user_id] = {"mode": "horoscope_photo"}
-                        answer_callback(vk, event, "📷 Пришлите фото:", get_cancel_keyboard())
+                        answer_callback(vk, event, "📷 Пришлите фото или ссылку вида https://vk.com/photo-XXXX_YYYY:", get_cancel_keyboard())
 
                     elif cmd == "horoscope_prompt":
                         try:
@@ -487,7 +497,7 @@ def run_messenger():
                         name = config.get("selected_name", "")
                         if name:
                             admin_state[user_id] = {"mode": "holiday_post"}
-                            answer_callback(vk, event, f"📷 Пришлите фото для: {name}", get_cancel_keyboard())
+                            answer_callback(vk, event, f"📷 Пришлите фото или ссылку для: {name}", get_cancel_keyboard())
                         else:
                             answer_callback(vk, event, "❌ Сначала выберите праздник.", get_holidays_keyboard())
 
@@ -679,7 +689,6 @@ def run_messenger():
                                 drafts[draft_id]["text"] = text
                             save_drafts(drafts)
                             admin_state.pop(user_id, None)
-                            # Возвращаемся в reddit_view
                             pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
                             ids = list(pending.keys())
                             if ids:
@@ -702,19 +711,27 @@ def run_messenger():
                             admin_state.pop(user_id, None)
                             send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                             continue
+
+                        # Пробуем получить фото из сообщения
                         photo_id = upload_photo_from_message(vk, user_id, message_id)
+
+                        # Если нет — пробуем распарсить ссылку из текста
+                        if not photo_id:
+                            photo_id = _extract_photo_from_text(text)
+
                         if mode == "horoscope_photo":
                             if photo_id:
                                 set_horoscope_photo(photo_id)
-                                send_or_edit(vk, user_id, "✅ Фото сохранено!", get_horoscope_keyboard())
+                                send_or_edit(vk, user_id, f"✅ Фото сохранено: {photo_id}", get_horoscope_keyboard())
                             else:
-                                send_or_edit(vk, user_id, "❌ Не удалось.", get_horoscope_keyboard())
+                                send_or_edit(vk, user_id, "❌ Не удалось. Пришли фото или ссылку вида https://vk.com/photo-XXXX_YYYY", get_horoscope_keyboard())
                         else:
                             if photo_id:
                                 config = get_holidays_config()
                                 config["photo_id"] = photo_id
                                 save_holidays_config(config)
-                                txt = generate_holiday_text(config.get("selected_name", ""))
+                                name = config.get("selected_name", "")
+                                txt = generate_holiday_text(name)
                                 if txt:
                                     config["generated_text"] = txt
                                     save_holidays_config(config)
@@ -722,7 +739,7 @@ def run_messenger():
                                 else:
                                     send_or_edit(vk, user_id, "❌ Не удалось.", get_holidays_keyboard())
                             else:
-                                send_or_edit(vk, user_id, "❌ Не удалось загрузить фото.", get_holidays_keyboard())
+                                send_or_edit(vk, user_id, "❌ Не удалось. Пришли фото или ссылку вида https://vk.com/photo-XXXX_YYYY", get_holidays_keyboard())
                         admin_state.pop(user_id, None)
                         continue
 
