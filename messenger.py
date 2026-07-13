@@ -1,4 +1,4 @@
-# messenger.py — полностью (финальная версия: + ссылки на фото для гороскопа/праздников)
+# messenger.py — полностью (финал: snackbar при выборе времени + возврат в Reddit-меню)
 
 import re
 import time
@@ -93,7 +93,6 @@ def upload_photo_from_message(vk, user_id, message_id):
 
 
 def _extract_photo_from_text(text):
-    """Извлекает photo-XXX_YYY из текста или ссылки VK."""
     match = re.search(r'photo(-?\d+_\d+)', text)
     if match:
         return f"photo{match.group(1)}"
@@ -174,7 +173,6 @@ def run_messenger():
                     is_admin = (user_id == ADMIN_ID)
                     conv_msg_id = event.object.get("conversation_message_id")
 
-                    # ==================== АДМИН-МЕНЮ ====================
                     if cmd == "queue":
                         sched = get_scheduled_posts()
                         msg = "📅 Запланированные:\n\n" + "\n".join(
@@ -209,7 +207,6 @@ def run_messenger():
                     elif cmd == "user_menu":
                         answer_callback(vk, event, "Меню:", get_main_keyboard())
 
-                    # ==================== ДОНОРЫ / СЛОВА ====================
                     elif cmd == "add_donor":
                         admin_state[user_id] = {"mode": "add_donor"}
                         answer_callback(vk, event, "Введите ID/ссылку:", get_back_admin_keyboard())
@@ -230,7 +227,6 @@ def run_messenger():
                         admin_state[user_id] = {"mode": "del_word"}
                         answer_callback(vk, event, "Введите слово:", get_back_admin_keyboard())
 
-                    # ==================== REDDIT ====================
                     elif cmd == "reddit":
                         drafts = load_drafts()
                         pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
@@ -329,7 +325,6 @@ def run_messenger():
                                 save_drafts(drafts)
                             show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id)
 
-                    # ==================== ВЫБОР ДАТЫ/ВРЕМЕНИ ====================
                     elif cmd == "pick_date":
                         state = admin_state.get(user_id, {})
                         state["mode"] = "reddit_pick_range"
@@ -364,12 +359,38 @@ def run_messenger():
                             if pub_time <= int(time.time()) + 60:
                                 answer_callback(vk, event, "⏰ Это время уже прошло.", snackbar="Время прошло")
                                 continue
+
                             publish_reddit_draft(vk, user_id, state["draft_id"], pub_time, state.get("photo_only", False))
-                            admin_state.pop(user_id, None)
+
+                            drafts = load_drafts()
+                            pending = {k: v for k, v in drafts.items() if v.get("status") == "pending"}
+                            ids = list(pending.keys())
+                            when = datetime.fromtimestamp(pub_time, IRK_TZ).strftime('%d.%m %H:%M')
+                            snackbar_text = f"✅ Запланировано на {when}"
+
+                            if ids:
+                                idx = 0
+                                d = pending[ids[idx]]
+                                msg = format_reddit_preview(d, idx, len(ids))
+                                admin_state[user_id] = {"mode": "reddit_view", "ids": ids, "index": idx}
+                                attachments = d.get("vk_attachments", [])
+                                attachment_str = ",".join(attachments) if attachments else None
+                                send_or_edit(vk, user_id, msg, get_reddit_post_keyboard(
+                                    bool(d.get('text', '').strip()),
+                                    bool(d.get('title', '').strip())
+                                ), conv_msg_id, attachment_str)
+                                vk.messages.sendMessageEventAnswer(
+                                    event_id=event.object["event_id"],
+                                    user_id=user_id,
+                                    peer_id=event.object["peer_id"],
+                                    event_data=json.dumps({"type": "show_snackbar", "text": snackbar_text})
+                                )
+                            else:
+                                admin_state.pop(user_id, None)
+                                answer_callback(vk, event, "📱 Все посты обработаны!", get_admin_main_keyboard(), snackbar=snackbar_text)
                         except:
                             answer_callback(vk, event, "❌ Ошибка даты.", get_admin_main_keyboard())
 
-                    # ==================== AI / ГОРОСКОП / ПРАЗДНИКИ ====================
                     elif cmd == "ai_poster":
                         answer_callback(vk, event, "🤖 AI-постер:", get_ai_keyboard())
 
@@ -520,7 +541,6 @@ def run_messenger():
                             save_holidays_config(config)
                             answer_callback(vk, event, f"✅ Обновлено! ({len(holidays)})", get_holidays_keyboard(), "Обновлено")
 
-                    # ==================== ПОЛЬЗОВАТЕЛЬСКИЕ ====================
                     elif cmd == "suggest_post":
                         if is_admin:
                             answer_callback(vk, event, "Ты админ, используй AI или Reddit.", get_admin_main_keyboard())
@@ -570,14 +590,12 @@ def run_messenger():
 
                     continue
 
-                # ==================== ПРЕДЛОЖКА ====================
                 if event.type == VkBotEventType.WALL_POST_NEW:
                     post = event.object
                     if post.get("post_type") == "suggest":
                         _handle_suggested_post(vk, post)
                     continue
 
-                # ==================== ОБЫЧНЫЕ СООБЩЕНИЯ ====================
                 if event.type != VkBotEventType.MESSAGE_NEW:
                     continue
 
@@ -712,10 +730,7 @@ def run_messenger():
                             send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                             continue
 
-                        # Пробуем получить фото из сообщения
                         photo_id = upload_photo_from_message(vk, user_id, message_id)
-
-                        # Если нет — пробуем распарсить ссылку из текста
                         if not photo_id:
                             photo_id = _extract_photo_from_text(text)
 
@@ -810,10 +825,6 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
         add_scheduled_post(pub_time, post_text[:200] if post_text else "Фото из Reddit", 0)
         del drafts[draft_id]
         save_drafts(drafts)
-        msg = f"✅ Запланировано на {ts_to_irk_str(pub_time)}!"
-        if attachments:
-            msg += f" 📸 {len(attachments)} фото"
-        send_message(vk, user_id, msg, get_admin_main_keyboard())
     else:
         send_message(vk, user_id, "❌ Ошибка публикации.", get_admin_main_keyboard())
 
