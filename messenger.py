@@ -1,4 +1,4 @@
-# messenger.py — полностью (с логами, исправлен add_donor, snackbar, возврат в Reddit)
+# messenger.py — полностью (очищенная версия)
 
 import re
 import time
@@ -79,19 +79,6 @@ def show_reddit_draft(vk, user_id, drafts, ids, idx, conv_msg_id=None):
     ), conv_msg_id, attachment_str)
 
 
-def upload_photo_from_message(vk, user_id, message_id):
-    from photo_utils import upload_photo_to_group
-    try:
-        msg_data = vk.messages.getById(message_ids=message_id, group_id=GROUP_ID)
-        if msg_data and msg_data.get("items"):
-            for att in msg_data["items"][0].get("attachments", []):
-                if att.get("type") == "photo":
-                    return upload_photo_to_group(vk, att["photo"])
-    except Exception as e:
-        logging.error(f"Ошибка загрузки фото: {e}")
-    return None
-
-
 def _extract_photo_from_text(text):
     match = re.search(r'photo(-?\d+_\d+)', text)
     if match:
@@ -140,10 +127,6 @@ def _handle_suggested_post(vk, post: dict):
             vk.wall.post(**kwargs)
             add_scheduled_post(slot, final_text[:200], from_id)
             logging.info(f"✅ Предложка #{post_id} → отложен на {ts_to_irk_str(slot)} (фото: {len(new_attachments)})")
-            try:
-                vk.wall.delete(owner_id=-GROUP_ID, post_id=post_id)
-            except:
-                pass
             return
         except vk_api.exceptions.ApiError as e:
             if e.code == 214 or "already scheduled" in str(e).lower():
@@ -462,7 +445,7 @@ def run_messenger():
 
                     elif cmd == "horoscope_photo":
                         admin_state[user_id] = {"mode": "horoscope_photo"}
-                        answer_callback(vk, event, "📷 Пришлите фото или ссылку вида https://vk.com/photo-XXXX_YYYY:", get_cancel_keyboard())
+                        answer_callback(vk, event, "📷 Пришлите ссылку вида https://vk.com/photo-XXXX_YYYY:", get_cancel_keyboard())
 
                     elif cmd == "horoscope_prompt":
                         try:
@@ -531,7 +514,7 @@ def run_messenger():
                         name = config.get("selected_name", "")
                         if name:
                             admin_state[user_id] = {"mode": "holiday_post"}
-                            answer_callback(vk, event, f"📷 Пришлите фото или ссылку для: {name}", get_cancel_keyboard())
+                            answer_callback(vk, event, f"📷 Пришлите ссылку на фото для: {name}", get_cancel_keyboard())
                         else:
                             answer_callback(vk, event, "❌ Сначала выберите праздник.", get_holidays_keyboard())
 
@@ -751,16 +734,14 @@ def run_messenger():
                             send_message(vk, user_id, "❌ Отменено.", get_admin_main_keyboard())
                             continue
 
-                        photo_id = upload_photo_from_message(vk, user_id, message_id)
-                        if not photo_id:
-                            photo_id = _extract_photo_from_text(text)
+                        photo_id = _extract_photo_from_text(text)
 
                         if mode == "horoscope_photo":
                             if photo_id:
                                 set_horoscope_photo(photo_id)
                                 send_or_edit(vk, user_id, f"✅ Фото сохранено: {photo_id}", get_horoscope_keyboard())
                             else:
-                                send_or_edit(vk, user_id, "❌ Не удалось. Пришли фото или ссылку вида https://vk.com/photo-XXXX_YYYY", get_horoscope_keyboard())
+                                send_or_edit(vk, user_id, "❌ Не удалось. Пришли ссылку вида https://vk.com/photo-XXXX_YYYY", get_horoscope_keyboard())
                         else:
                             if photo_id:
                                 config = get_holidays_config()
@@ -775,7 +756,7 @@ def run_messenger():
                                 else:
                                     send_or_edit(vk, user_id, "❌ Не удалось.", get_holidays_keyboard())
                             else:
-                                send_or_edit(vk, user_id, "❌ Не удалось. Пришли фото или ссылку вида https://vk.com/photo-XXXX_YYYY", get_holidays_keyboard())
+                                send_or_edit(vk, user_id, "❌ Не удалось. Пришли ссылку вида https://vk.com/photo-XXXX_YYYY", get_holidays_keyboard())
                         admin_state.pop(user_id, None)
                         continue
 
@@ -851,11 +832,9 @@ def publish_reddit_draft(vk, user_id, draft_id, pub_time, photo_only=False):
 
 
 def schedule_user_post(vk, post_data):
-    from photo_utils import copy_photos_from_message
     post_id = post_data["post_id"]
     from_id = post_data["from_id"]
     text = post_data["text"]
-    new_attachments = copy_photos_from_message(vk, post_id, GROUP_ID)
 
     if contains_anonymous(text):
         final_text = f"{text}\n\nАвтор: Аноним"
@@ -868,8 +847,6 @@ def schedule_user_post(vk, post_data):
 
     slot = get_next_schedule_time(PUBLISH_INTERVAL)
     kwargs = {"owner_id": -GROUP_ID, "message": final_text, "from_group": 1}
-    if new_attachments:
-        kwargs["attachments"] = ",".join(new_attachments)
 
     for _ in range(96):
         try:
