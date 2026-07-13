@@ -1,4 +1,4 @@
-# utils.py — полностью (финальная версия)
+# utils.py — полностью (исправлена resolve_group_id)
 
 import re
 import json
@@ -389,13 +389,29 @@ def build_attachments(post):
 
 def resolve_group_id(vk, identifier):
     identifier = identifier.strip().rstrip('/')
-    if identifier.lstrip('-').isdigit(): return int(identifier)
+    
+    # Если это просто число
+    if identifier.lstrip('-').isdigit():
+        return int(identifier)
+    
+    # Разные форматы ссылок: vk.com/club123, vk.ru/club123, vk.com/public123
     m = re.search(r'vk\.(?:com|ru)/(?:club|public|wall-)?([\w.]+)', identifier)
-    if m: identifier = m.group(1)
-    if identifier.lower().startswith('club'): identifier = identifier[4:]
-    if identifier.isdigit(): return int(identifier)
-    try: return vk.groups.getById(group_id=identifier)[0]["id"]
-    except: return None
+    if m:
+        identifier = m.group(1)
+    
+    # Если club123456
+    if identifier.lower().startswith('club'):
+        identifier = identifier[4:]
+    
+    # Если осталось число — возвращаем
+    if identifier.isdigit():
+        return int(identifier)
+    
+    # Пробуем найти по короткому имени
+    try:
+        return vk.groups.getById(group_id=identifier)[0]["id"]
+    except:
+        return None
 
 def get_user_name(vk, user_id):
     try:
