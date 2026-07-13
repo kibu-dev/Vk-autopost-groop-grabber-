@@ -1,4 +1,4 @@
-# keyboards.py — полностью (обновлённое меню для пользователей)
+# keyboards.py — полностью (без доноров)
 
 import json
 from datetime import datetime, timedelta
@@ -41,12 +41,11 @@ def get_admin_main_keyboard(reddit_count=0):
     k = VkKeyboard(inline=True, one_time=False)
     k.add_callback_button("📅 Очередь постов", VkKeyboardColor.PRIMARY, payload={"cmd": "queue"})
     k.add_line()
-    k.add_callback_button("👥 Группы-доноры", VkKeyboardColor.PRIMARY, payload={"cmd": "donors"})
     k.add_callback_button("🚫 Запрет-слова", VkKeyboardColor.NEGATIVE, payload={"cmd": "forbidden_words"})
+    k.add_callback_button("📊 Статистика", VkKeyboardColor.SECONDARY, payload={"cmd": "stats"})
     k.add_line()
     reddit_label = f"📱 Reddit (+{reddit_count})" if reddit_count > 0 else "📱 Reddit"
     k.add_callback_button(reddit_label, VkKeyboardColor.PRIMARY, payload={"cmd": "reddit"})
-    k.add_callback_button("📊 Статистика", VkKeyboardColor.SECONDARY, payload={"cmd": "stats"})
     k.add_line()
     k.add_callback_button("🔮 Гороскоп", VkKeyboardColor.PRIMARY, payload={"cmd": "horoscope"})
     k.add_callback_button("🤖 AI-постер", VkKeyboardColor.SECONDARY, payload={"cmd": "ai_poster"})
@@ -127,15 +126,6 @@ def get_reddit_hour_keyboard(busy_hours, start_hour, end_hour):
     return k
 
 
-def get_donor_groups_keyboard():
-    k = VkKeyboard(inline=True, one_time=False)
-    k.add_callback_button("➕ Добавить группу", VkKeyboardColor.POSITIVE, payload={"cmd": "add_donor"})
-    k.add_callback_button("➖ Удалить группу", VkKeyboardColor.NEGATIVE, payload={"cmd": "remove_donor_menu"})
-    k.add_line()
-    k.add_callback_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY, payload={"cmd": "admin_menu"})
-    return k
-
-
 def get_forbidden_words_keyboard():
     k = VkKeyboard(inline=True, one_time=False)
     k.add_callback_button("➕ Добавить слово", VkKeyboardColor.POSITIVE, payload={"cmd": "add_word"})
@@ -154,22 +144,6 @@ def get_scheduled_keyboard():
 def get_back_admin_keyboard():
     k = VkKeyboard(inline=True, one_time=False)
     k.add_callback_button("🔙 Назад в админку", VkKeyboardColor.PRIMARY, payload={"cmd": "admin_menu"})
-    return k
-
-
-def get_remove_donor_keyboard(donors, vk_user=None):
-    k = VkKeyboard(inline=True, one_time=False)
-    for i, g in enumerate(donors[:10], 1):
-        try:
-            from utils import get_group_name
-            name = get_group_name(vk_user, g) if vk_user else str(g)
-        except:
-            name = str(g)
-        k.add_callback_button(f"➖ {name}"[:40], VkKeyboardColor.NEGATIVE, payload={"cmd": "remove_donor", "group_id": g})
-        if i % 2 == 0 and i != len(donors[:10]):
-            k.add_line()
-    k.add_line()
-    k.add_callback_button("🔙 Назад в админку", VkKeyboardColor.SECONDARY, payload={"cmd": "admin_menu"})
     return k
 
 
