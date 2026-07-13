@@ -1,12 +1,12 @@
+# main.py — полностью (без граббера и акцептора)
+
 import multiprocessing
 import threading
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
 from config import *
-from grabber import run_grabber
 from messenger import run_messenger
-from group_acceptor import run_group_acceptor
 from weekly_horoscope import run_weekly_horoscope
 
 def start_reddit():
@@ -31,10 +31,6 @@ if __name__ == "__main__":
         logging.error("❌ Проверьте .env (GROUP_TOKEN, GROUP_ID)")
         exit(1)
 
-    threading.Thread(target=run_grabber, daemon=True).start()
-    threading.Thread(target=run_group_acceptor, daemon=True).start()
     threading.Thread(target=run_weekly_horoscope, daemon=True).start()
-
     multiprocessing.Process(target=start_reddit, daemon=True).start()
-
     run_messenger()
