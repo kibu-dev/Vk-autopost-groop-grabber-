@@ -1,3 +1,5 @@
+# weekly_horoscope.py — полностью (создаётся один раз на понедельник)
+
 import time
 import logging
 import vk_api
@@ -36,6 +38,17 @@ def create_horoscope(vk, vk_group):
     """Создаёт новый гороскоп. Возвращает True если успешно."""
     config = get_horoscope_config()
     
+    # Проверяем — может уже есть гороскоп на этот понедельник
+    next_monday = get_next_monday_9am()
+    if config.get("next_monday"):
+        try:
+            existing_ts = int(datetime.fromisoformat(config["next_monday"]).timestamp())
+            if existing_ts == next_monday:
+                logging.info(f"🔮 Гороскоп на {datetime.fromtimestamp(next_monday).strftime('%d.%m %H:%M')} уже создан")
+                return True
+        except:
+            pass
+    
     # Удаляем старый пост если есть
     old_post_id = config.get("post_id")
     if old_post_id:
@@ -54,7 +67,7 @@ def create_horoscope(vk, vk_group):
         logging.error("🔮 ИИ не сгенерировал гороскоп")
         return False
     
-    pub_time = get_next_monday_9am()
+    pub_time = next_monday
     photo_id = config.get("photo_id", "")
     logging.info(f"🔮 Фото: {'есть' if photo_id else 'нет'}")
     
@@ -98,11 +111,12 @@ def create_horoscope(vk, vk_group):
     return True
 
 def run_weekly_horoscope():
-    vk = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
-    vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.131").get_api()
+    vk = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.199").get_api()
+    vk_group = vk_api.VkApi(token=GROUP_TOKEN, api_version="5.199").get_api()
     
     logging.info("🔮 Гороскоп запущен")
     
+    # Инициализируем конфиг если пустой
     config = get_horoscope_config()
     if not config.get("next_monday"):
         config["next_monday"] = ""
@@ -116,17 +130,19 @@ def run_weekly_horoscope():
                 time.sleep(300)
                 continue
             
-            now_ts = int((datetime.now() + timedelta(hours=3)).timestamp())
-            next_monday_str = config.get("next_monday", "")
+            next_monday = get_next_monday_9am()
             
+            # Проверяем нужен ли новый гороскоп
             need_new = False
+            next_monday_str = config.get("next_monday", "")
             
             if not next_monday_str:
                 need_new = True
             else:
                 try:
-                    next_monday_ts = int(datetime.fromisoformat(next_monday_str).timestamp())
-                    if now_ts >= next_monday_ts:
+                    existing_ts = int(datetime.fromisoformat(next_monday_str).timestamp())
+                    # Если запланированный гороскоп уже не актуален (прошёл или на другую дату)
+                    if existing_ts != next_monday:
                         need_new = True
                 except:
                     need_new = True
